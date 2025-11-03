@@ -1,0 +1,31 @@
+{
+  "name": "queue-admin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0 --port 5173",
+    "build": "tsc -p tsconfig.json && vite build",
+    "preview": "vite preview --port 5173",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier -w ."
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@mui/material": "^5.15.20",
+    "@emotion/react": "^11.13.0",
+    "@emotion/styled": "^11.13.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react": "^4.2.1",
+    "typescript": "^5.4.2",
+    "vite": "^5.1.0",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "prettier": "^3.2.5"
+  }
+}

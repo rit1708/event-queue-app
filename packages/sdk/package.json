@@ -1,0 +1,20 @@
+{
+  "name": "queue-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint . --ext .ts",
+    "format": "prettier -w ."
+  },
+  "devDependencies": {
+    "typescript": "^5.4.2",
+    "@types/node": "^20.11.30",
+    "eslint": "^8.56.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "prettier": "^3.2.5"
+  }
+}

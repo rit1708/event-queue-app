@@ -1,0 +1,21 @@
+{
+  "name": "queue-monorepo",
+  "private": true,
+  "workspaces": [
+    "services/*",
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm -w services/api run dev",
+    "setup": "bash scripts/install-all.sh",
+    "dev:docker": "bash scripts/run-all.sh",
+    "dev:local": "concurrently -k \"npm -w services/api run dev\" \"npm -w apps/client run dev\" \"npm -w apps/admin run dev\"",
+    "build": "npm --workspaces run build",
+    "lint": "npm --workspaces run lint",
+    "format": "npm --workspaces run format"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
