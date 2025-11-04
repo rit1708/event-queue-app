@@ -3,16 +3,28 @@ import cors from 'cors';
 import { z } from 'zod';
 import { ObjectId } from 'mongodb';
 import { getDb } from './mongo';
-import { getRedis, advanceQueue, enqueueUser, getStatus, ensureEventKeys } from './queue';
+import {
+  getRedis,
+  advanceQueue,
+  enqueueUser,
+  getStatus,
+  ensureEventKeys,
+} from './queue';
 
 const app = express();
 app.use(express.json());
+
 // Enable CORS for all routes
-app.use(cors({
-  origin: '*',  // Allow all origins in development
-  methods: ['GET', 'POST', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(
+  cors({
+    origin: '*',
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  })
+);
+
+// Handle preflight requests
+app.options('*', cors());
 
 // Log all requests for debugging
 app.use((req, res, next) => {
@@ -20,21 +32,30 @@ app.use((req, res, next) => {
   next();
 });
 
-app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
+// Create API router
+const router = express.Router();
+
+// Mount API router under /api
+app.use('/api', router);
+
+// Health check
+router.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 
 // Admin: create domain
-app.post('/admin/domain', async (req: Request, res: Response) => {
+router.post('/admin/domain', async (req: Request, res: Response) => {
   const schema = z.object({ name: z.string().min(1) });
   const body = schema.parse(req.body);
   const db = await getDb();
   const existing = await db.collection('domains').findOne({ name: body.name });
   if (existing) return res.status(400).json({ error: 'Domain exists' });
-  const { insertedId } = await db.collection('domains').insertOne({ name: body.name });
+  const { insertedId } = await db
+    .collection('domains')
+    .insertOne({ name: body.name });
   res.json({ domainId: String(insertedId), name: body.name });
 });
 
 // Admin: create event
-app.post('/admin/event', async (req: Request, res: Response) => {
+router.post('/admin/event', async (req: Request, res: Response) => {
   const schema = z.object({
     domain: z.string().min(1),
     name: z.string().min(1),
@@ -57,27 +78,89 @@ app.post('/admin/event', async (req: Request, res: Response) => {
 });
 
 // Admin: update config
-app.post('/admin/config', async (req: Request, res: Response) => {
+router.put('/admin/event/:id', async (req: Request, res: Response) => {
   const schema = z.object({
-    eventId: z.string().min(1),
     queueLimit: z.number().int().positive().optional(),
     intervalSec: z.number().int().positive().optional(),
+    isActive: z.boolean().optional(),
   });
-  const body = schema.parse(req.body);
-  const db = await getDb();
-  const { eventId, ...update } = body;
-  await db.collection('events').updateOne({ _id: new ObjectId(eventId) }, { $set: update });
-  res.json({ ok: true });
+
+  try {
+    const body = schema.parse(req.body);
+    const db = await getDb();
+    const updateResult = await db
+      .collection('events')
+      .updateOne({ _id: new ObjectId(req.params.id) }, { $set: body });
+
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error updating event:', error);
+    res.status(400).json({ error: 'Invalid request data' });
+  }
+});
+
+// Admin: advance queue
+router.post('/admin/event/:id/advance', async (req: Request, res: Response) => {
+  try {
+    const eventId = req.params.id;
+    if (!eventId) {
+      return res.status(400).json({ error: 'Event ID is required' });
+    }
+
+    const db = await getDb();
+    const event = await db
+      .collection('events')
+      .findOne({ _id: new ObjectId(eventId) });
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    const redis = await getRedis();
+    const kActive = `q:${eventId}:active`;
+    const kWaiting = `q:${eventId}:waiting`;
+    const kTimer = `q:${eventId}:timer`;
+
+    await ensureEventKeys(redis, eventId);
+    await redis.del(kActive);
+
+    const moved: string[] = [];
+    for (let i = 0; i < event.queueLimit; i++) {
+      const user = await redis.lpop(kWaiting);
+      if (!user) break;
+      moved.push(user);
+    }
+
+    if (moved.length > 0) {
+      await redis.rpush(kActive, ...moved);
+      await redis.set(kTimer, '1', 'EX', event.intervalSec);
+    } else {
+      await redis.del(kTimer);
+    }
+
+    res.json({
+      ok: true,
+      moved,
+      active: await redis.lrange(kActive, 0, -1),
+      waiting: await redis.lrange(kWaiting, 0, -1),
+    });
+  } catch (error) {
+    console.error('Error advancing queue:', error);
+    res.status(500).json({ error: 'Failed to advance queue' });
+  }
 });
 
 // List all events (modified to not require domain)
-app.get('/events', async (req: Request, res: Response) => {
+router.get('/events', async (req: Request, res: Response) => {
   try {
     console.log('Fetching all events');
     const db = await getDb();
     const events = await db.collection('events').find({}).toArray();
     console.log(`Found ${events.length} events`);
-    
+
     // Transform the events to include eventId as a string
     const formattedEvents = events.map((e: any) => ({
       _id: String(e._id),
@@ -85,9 +168,9 @@ app.get('/events', async (req: Request, res: Response) => {
       domain: e.domain,
       queueLimit: e.queueLimit,
       intervalSec: e.intervalSec,
-      isActive: e.isActive || false
+      isActive: e.isActive || false,
     }));
-    
+
     res.json(formattedEvents);
   } catch (error) {
     console.error('Error fetching events:', error);
@@ -96,19 +179,24 @@ app.get('/events', async (req: Request, res: Response) => {
 });
 
 // Join queue
-app.post('/queue/join', async (req: Request, res: Response) => {
-  const schema = z.object({ eventId: z.string().min(1), userId: z.string().min(1) });
+router.post('/queue/join', async (req: Request, res: Response) => {
+  const schema = z.object({
+    eventId: z.string().min(1),
+    userId: z.string().min(1),
+  });
   const body = schema.parse(req.body);
   const db = await getDb();
-  const event = await db.collection('events').findOne({ _id: new ObjectId(body.eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(body.eventId) });
   if (!event) return res.status(404).json({ error: 'Event not found' });
-  
+
   const redis = await getRedis();
   await ensureEventKeys(redis, body.eventId);
-  
+
   // Check current queue status
   const status = await getStatus(redis, body.eventId, body.userId);
-  
+
   // If queue is full, return a waiting status
   if (status.state === 'waiting' && status.position > event.queueLimit) {
     return res.json({
@@ -119,31 +207,38 @@ app.post('/queue/join', async (req: Request, res: Response) => {
       position: status.position,
       total: status.total,
       activeUsers: status.activeUsers,
-      waitingUsers: status.waitingUsers
+      waitingUsers: status.waitingUsers,
     });
   }
-  
+
   // If not in queue, enqueue the user
   if (status.state !== 'active') {
     await enqueueUser(redis, body.eventId, body.userId);
-    await advanceQueue(redis, body.eventId, event.queueLimit, event.intervalSec);
+    await advanceQueue(
+      redis,
+      body.eventId,
+      event.queueLimit,
+      event.intervalSec
+    );
   }
-  
+
   // Get updated status
   const updatedStatus = await getStatus(redis, body.eventId, body.userId);
   res.json({
     success: true,
     status: updatedStatus.state,
-    ...updatedStatus
+    ...updatedStatus,
   });
 });
 
 // Status
-app.get('/queue/status', async (req: Request, res: Response) => {
+router.get('/queue/status', async (req: Request, res: Response) => {
   const eventId = String(req.query.eventId || '');
   const userId = String(req.query.userId || '');
   const db = await getDb();
-  const event = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(eventId) });
   if (!event) return res.status(404).json({ error: 'Event not found' });
   const redis = await getRedis();
   await ensureEventKeys(redis, eventId);
@@ -153,11 +248,13 @@ app.get('/queue/status', async (req: Request, res: Response) => {
 });
 
 // Admin: list users in an event (active and waiting)
-app.get('/admin/event/users', async (req: Request, res: Response) => {
+router.get('/admin/event/users', async (req: Request, res: Response) => {
   const eventId = String(req.query.eventId || '');
   if (!eventId) return res.status(400).json({ error: 'eventId required' });
   const db = await getDb();
-  const event = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(eventId) });
   if (!event) return res.status(404).json({ error: 'Event not found' });
   const redis = await getRedis();
   await ensureEventKeys(redis, eventId);
@@ -176,10 +273,15 @@ app.get('/admin/event/users', async (req: Request, res: Response) => {
 
 // Admin: enqueue a single user into an event
 app.post('/admin/event/enqueue', async (req: Request, res: Response) => {
-  const schema = z.object({ eventId: z.string().min(1), userId: z.string().min(1) });
+  const schema = z.object({
+    eventId: z.string().min(1),
+    userId: z.string().min(1),
+  });
   const body = schema.parse(req.body);
   const db = await getDb();
-  const event = await db.collection('events').findOne({ _id: new ObjectId(body.eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(body.eventId) });
   if (!event) return res.status(404).json({ error: 'Event not found' });
   const redis = await getRedis();
   await ensureEventKeys(redis, body.eventId);
@@ -190,10 +292,15 @@ app.post('/admin/event/enqueue', async (req: Request, res: Response) => {
 
 // Admin: enqueue N dummy users
 app.post('/admin/event/enqueue-batch', async (req: Request, res: Response) => {
-  const schema = z.object({ eventId: z.string().min(1), count: z.number().int().positive().max(50).default(1) });
+  const schema = z.object({
+    eventId: z.string().min(1),
+    count: z.number().int().positive().max(50).default(1),
+  });
   const body = schema.parse(req.body);
   const db = await getDb();
-  const event = await db.collection('events').findOne({ _id: new ObjectId(body.eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(body.eventId) });
   if (!event) return res.status(404).json({ error: 'Event not found' });
   const redis = await getRedis();
   await ensureEventKeys(redis, body.eventId);
@@ -212,7 +319,9 @@ app.post('/admin/event/start', async (req: Request, res: Response) => {
   const schema = z.object({ eventId: z.string().min(1) });
   const body = schema.parse(req.body);
   const db = await getDb();
-  const event = await db.collection('events').findOne({ _id: new ObjectId(body.eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(body.eventId) });
   if (!event) return res.status(404).json({ error: 'Event not found' });
   const redis = await getRedis();
   const kActive = `q:${body.eventId}:active`;
@@ -239,7 +348,9 @@ app.post('/admin/event/advance', async (req: Request, res: Response) => {
   const schema = z.object({ eventId: z.string().min(1) });
   const body = schema.parse(req.body);
   const db = await getDb();
-  const event = await db.collection('events').findOne({ _id: new ObjectId(body.eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(body.eventId) });
   if (!event) return res.status(404).json({ error: 'Event not found' });
   const redis = await getRedis();
   const kActive = `q:${body.eventId}:active`;

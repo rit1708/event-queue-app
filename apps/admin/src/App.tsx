@@ -39,7 +39,7 @@ import {
   Schedule as WaitingIcon
 } from '@mui/icons-material';
 
-const API_URL = '/api';
+const API_URL = 'http://localhost:4000/api';
 
 interface TabPanelProps {
   children?: React.ReactNode;
