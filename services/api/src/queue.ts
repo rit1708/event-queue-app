@@ -106,10 +106,32 @@ export async function getStatus(redis: Redis, eventId: string, userId: string) {
     redis.lrange(k.waiting, 0, -1),
     redis.ttl(k.timer),
   ]);
+  
+  const activeUsers = active.length;
+  const waitingUsers = waiting.length;
+  const timeRemaining = Math.max(0, ttl);
+  
   const inActive = active.indexOf(userId);
   if (inActive !== -1) {
-    return { state: 'active', position: 0, remaining: Math.max(0, ttl) };
+    return { 
+      state: 'active', 
+      position: 0, 
+      total: activeUsers + waitingUsers,
+      timeRemaining,
+      activeUsers,
+      waitingUsers
+    };
   }
+  
   const idx = waiting.indexOf(userId);
-  return { state: 'waiting', position: idx === -1 ? waiting.length : idx + 1, remaining: Math.max(0, ttl) };
+  const position = idx === -1 ? waiting.length : idx + 1;
+  
+  return { 
+    state: 'waiting', 
+    position,
+    total: activeUsers + waitingUsers,
+    timeRemaining,
+    activeUsers,
+    waitingUsers
+  };
 }

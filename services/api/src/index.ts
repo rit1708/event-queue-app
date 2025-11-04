@@ -7,11 +7,18 @@ import { getRedis, advanceQueue, enqueueUser, getStatus, ensureEventKeys } from 
 
 const app = express();
 app.use(express.json());
-app.use(
-  cors({
-    origin: process.env.CORS_ORIGIN?.split(',') || '*',
-  })
-);
+// Enable CORS for all routes
+app.use(cors({
+  origin: '*',  // Allow all origins in development
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+// Log all requests for debugging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
 
 app.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 
@@ -63,14 +70,29 @@ app.post('/admin/config', async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-// List events for a domain
+// List all events (modified to not require domain)
 app.get('/events', async (req: Request, res: Response) => {
-  const domain = String(req.query.domain || '');
-  const db = await getDb();
-  const events = await db.collection('events').find({ domain }).project({ name: 1 }).toArray();
-  res.json(
-    events.map((e: any) => ({ eventId: String(e._id), name: e.name }))
-  );
+  try {
+    console.log('Fetching all events');
+    const db = await getDb();
+    const events = await db.collection('events').find({}).toArray();
+    console.log(`Found ${events.length} events`);
+    
+    // Transform the events to include eventId as a string
+    const formattedEvents = events.map((e: any) => ({
+      _id: String(e._id),
+      name: e.name,
+      domain: e.domain,
+      queueLimit: e.queueLimit,
+      intervalSec: e.intervalSec,
+      isActive: e.isActive || false
+    }));
+    
+    res.json(formattedEvents);
+  } catch (error) {
+    console.error('Error fetching events:', error);
+    res.status(500).json({ error: 'Failed to fetch events' });
+  }
 });
 
 // Join queue
@@ -80,12 +102,40 @@ app.post('/queue/join', async (req: Request, res: Response) => {
   const db = await getDb();
   const event = await db.collection('events').findOne({ _id: new ObjectId(body.eventId) });
   if (!event) return res.status(404).json({ error: 'Event not found' });
+  
   const redis = await getRedis();
   await ensureEventKeys(redis, body.eventId);
-  await enqueueUser(redis, body.eventId, body.userId);
-  await advanceQueue(redis, body.eventId, event.queueLimit, event.intervalSec);
+  
+  // Check current queue status
   const status = await getStatus(redis, body.eventId, body.userId);
-  res.json(status);
+  
+  // If queue is full, return a waiting status
+  if (status.state === 'waiting' && status.position > event.queueLimit) {
+    return res.json({
+      success: false,
+      status: 'waiting',
+      message: 'Queue is full. Please wait...',
+      waitTime: 30, // seconds
+      position: status.position,
+      total: status.total,
+      activeUsers: status.activeUsers,
+      waitingUsers: status.waitingUsers
+    });
+  }
+  
+  // If not in queue, enqueue the user
+  if (status.state !== 'active') {
+    await enqueueUser(redis, body.eventId, body.userId);
+    await advanceQueue(redis, body.eventId, event.queueLimit, event.intervalSec);
+  }
+  
+  // Get updated status
+  const updatedStatus = await getStatus(redis, body.eventId, body.userId);
+  res.json({
+    success: true,
+    status: updatedStatus.state,
+    ...updatedStatus
+  });
 });
 
 // Status

@@ -1,221 +1,623 @@
 import React, { useEffect, useState } from 'react';
-import { Button, Container, Stack, TextField, Typography, Paper, FormControl, InputLabel, Select, MenuItem } from '@mui/material';
+import {
+  AppBar,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Container,
+  FormControl,
+  Grid,
+  InputLabel,
+  MenuItem,
+  Paper,
+  Select,
+  SelectChangeEvent,
+  Stack,
+  Tab,
+  Tabs,
+  TextField,
+  Toolbar,
+  Typography,
+  List,
+  ListItem,
+  ListItemText,
+  ListItemSecondaryAction,
+  IconButton,
+  Chip,
+  Divider,
+  CircularProgress
+} from '@mui/material';
+import {
+  People as PeopleIcon,
+  Timer as TimerIcon,
+  Event as EventIcon,
+  Refresh as RefreshIcon,
+  PlayArrow as StartIcon,
+  SkipNext as AdvanceIcon,
+  CheckCircle as ActiveIcon,
+  Schedule as WaitingIcon
+} from '@mui/icons-material';
 
-const API_URL = (import.meta.env.VITE_API_URL as string) || 'http://localhost:4000';
+const API_URL = '/api';
 
-export default function App() {
+interface TabPanelProps {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}
+
+function TabPanel(props: TabPanelProps) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`admin-tabpanel-${index}`}
+      aria-labelledby={`admin-tab-${index}`}
+      {...other}
+    >
+      {value === index && (
+        <Box sx={{ p: 3 }}>
+          {children}
+        </Box>
+      )}
+    </div>
+  );
+}
+
+function a11yProps(index: number) {
+  return {
+    id: `admin-tab-${index}`,
+    'aria-controls': `admin-tabpanel-${index}`,
+  };
+}
+
+interface Event {
+  _id: string;
+  name: string;
+  domain: string;
+  queueLimit: number;
+  intervalSec: number;
+  isActive?: boolean;
+}
+
+function AdminApp() {
+  // State management
+  const [tabValue, setTabValue] = useState(0);
   const [domain, setDomain] = useState('demo.com');
-  const [eventName, setEventName] = useState('Launch');
+  const [eventName, setEventName] = useState('');
   const [queueLimit, setQueueLimit] = useState(2);
   const [intervalSec, setIntervalSec] = useState(30);
   const [eventId, setEventId] = useState('');
   const [msg, setMsg] = useState('');
   const [activeUsers, setActiveUsers] = useState<string[]>([]);
   const [waitingUsers, setWaitingUsers] = useState<string[]>([]);
-  const [events, setEvents] = useState<{ eventId: string; name: string }[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [remaining, setRemaining] = useState<number>(0);
-  const [newUserId, setNewUserId] = useState<string>('user-' + Math.random().toString(36).slice(2, 8));
-  const [entries, setEntries] = useState<{ eventId: string; userId: string; enteredAt: string }[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
 
-  const createDomain = async () => {
-    const r = await fetch(`${API_URL}/admin/domain`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: domain }),
-    });
-    setMsg(await r.text());
-  };
-
-  const startWindow = async () => {
-    if (!eventId) return;
-    await fetch(`${API_URL}/admin/event/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId })
-    });
-    await Promise.all([loadUsers(), loadEntries()]);
-  };
-
-  const advanceNow = async () => {
-    if (!eventId) return;
-    await fetch(`${API_URL}/admin/event/advance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId })
-    });
-    await Promise.all([loadUsers(), loadEntries()]);
-  };
-  const createEvent = async () => {
-    const r = await fetch(`${API_URL}/admin/event`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ domain, name: eventName, queueLimit, intervalSec }),
-    });
-    const j = await r.json();
-    setEventId(j.eventId || '');
-    setMsg(JSON.stringify(j, null, 2));
-  };
-  const updateConfig = async () => {
-    if (!eventId) return;
-    const r = await fetch(`${API_URL}/admin/config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId, queueLimit, intervalSec }),
-    });
-    setMsg(await r.text());
+  // Event handlers
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setTabValue(newValue);
   };
 
   const loadUsers = async () => {
     if (!eventId) return;
-    const u = new URL(`${API_URL}/admin/event/users`);
-    u.searchParams.set('eventId', eventId);
-    const r = await fetch(u);
-    if (!r.ok) {
-      setMsg(await r.text());
-      return;
+    try {
+      const response = await fetch(`${API_URL}/admin/event/users?eventId=${eventId}`);
+      const data = await response.json();
+      setActiveUsers(data.active || []);
+      setWaitingUsers(data.waiting || []);
+    } catch (error) {
+      console.error('Failed to load users:', error);
+      setMsg('Failed to load users');
     }
-    const j = (await r.json()) as { active: string[]; waiting: string[]; remaining: number };
-    setActiveUsers(j.active || []);
-    setWaitingUsers(j.waiting || []);
-    setRemaining(j.remaining ?? 0);
   };
 
-  const loadEvents = async () => {
-    const u = new URL(`${API_URL}/events`);
-    u.searchParams.set('domain', domain);
-    const r = await fetch(u);
-    if (!r.ok) {
-      setMsg(await r.text());
-      return;
+  const loadEvents = async (): Promise<void> => {
+    try {
+      const response = await fetch(`${API_URL}/events`);
+      if (response.ok) {
+        const data = await response.json();
+        setEvents(data);
+        if (data.length > 0 && !eventId) {
+          setEventId(data[0]._id);
+        }
+      } else {
+        console.error('Failed to fetch events');
+      }
+    } catch (error) {
+      console.error('Error loading events:', error);
     }
-    const list = (await r.json()) as { eventId: string; name: string }[];
-    setEvents(list);
-    if (list[0]) setEventId(list[0].eventId);
   };
 
+  // Load users when event changes
   useEffect(() => {
-    if (!eventId) return;
-    const id = setInterval(loadUsers, 1000);
     loadUsers();
-    return () => clearInterval(id);
   }, [eventId]);
 
-  const loadEntries = async () => {
-    if (!eventId) return;
-    const u = new URL(`${API_URL}/admin/event/entries`);
-    u.searchParams.set('eventId', eventId);
-    const r = await fetch(u);
-    if (!r.ok) return;
-    const list = (await r.json()) as { eventId: string; userId: string; enteredAt: string }[];
-    setEntries(list);
+  // API functions
+  const createDomain = async () => {
+    if (!domain) {
+      setMsg('Please provide a domain name');
+      return;
+    }
+    
+    setMsg('Creating domain...');
+    try {
+      const response = await fetch(`${API_URL}/admin/domain`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          name: domain.replace(/^https?:\/\//, '').split('/')[0], // Extract domain name
+          domain: domain
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMsg(`Domain ${domain} created successfully`);
+        // Refresh events list
+        const eventsResponse = await fetch(`${API_URL}/events`);
+        if (eventsResponse.ok) {
+          const eventsData = await eventsResponse.json();
+          setEvents(eventsData);
+        }
+      } else {
+        setMsg(`Error: ${data.error || 'Failed to create domain'}`);
+      }
+    } catch (error) {
+      console.error('Error creating domain:', error);
+      setMsg('Failed to create domain');
+    }
   };
-  useEffect(() => {
-    if (!eventId) return;
-    const id = setInterval(loadEntries, 2000);
-    loadEntries();
-    return () => clearInterval(id);
-  }, [eventId]);
 
-  const enqueueUserApi = async () => {
-    if (!eventId || !newUserId) return;
-    const r = await fetch(`${API_URL}/admin/event/enqueue`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId, userId: newUserId })
-    });
-    if (!r.ok) setMsg(await r.text());
-    await loadUsers();
+  const createEvent = async () => {
+    if (!eventName || !domain) {
+      setMsg('Please provide event name and domain');
+      return;
+    }
+    
+    setMsg('Creating event...');
+    try {
+      const response = await fetch(`${API_URL}/admin/event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: eventName,
+          domain,
+          queueLimit,
+          intervalSec
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMsg(`Event ${eventName} created successfully`);
+        // Refresh events list
+        const eventsResponse = await fetch(`${API_URL}/events`);
+        if (eventsResponse.ok) {
+          const eventsData = await eventsResponse.json();
+          setEvents(eventsData);
+        }
+      } else {
+        setMsg(`Error: ${data.error || 'Failed to create event'}`);
+      }
+    } catch (error) {
+      console.error('Error creating event:', error);
+      setMsg('Failed to create event');
+    }
   };
 
-  const enqueueBatch = async (count: number) => {
-    if (!eventId) return;
-    const r = await fetch(`${API_URL}/admin/event/enqueue-batch`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId, count })
-    });
-    if (!r.ok) setMsg(await r.text());
-    await loadUsers();
+  const updateConfig = async () => {
+    if (!selectedEvent) return;
+    
+    setMsg('Updating configuration...');
+    try {
+      const response = await fetch(`${API_URL}/admin/event/${selectedEvent._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          queueLimit,
+          intervalSec
+        })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMsg('Configuration updated successfully');
+        // Update selected event
+        setSelectedEvent(prev => prev ? { ...prev, queueLimit, intervalSec } : null);
+      } else {
+        setMsg(`Error: ${data.error || 'Failed to update configuration'}`);
+      }
+    } catch (error) {
+      console.error('Error updating configuration:', error);
+      setMsg('Failed to update configuration');
+    }
+  };
+
+  const startWindow = async () => {
+    if (!selectedEvent) return;
+    
+    setMsg('Starting queue window...');
+    setIsLoading(true);
+    try {
+      const response = await fetch(`${API_URL}/admin/event/advance`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: selectedEvent._id })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMsg('Queue window started');
+        // Update selected event
+        setSelectedEvent(prev => prev ? { ...prev, isActive: true } : null);
+        // Refresh users after starting
+        loadUsers();
+      } else {
+        setMsg(`Error: ${data.error || 'Failed to start queue window'}`);
+      }
+    } catch (error) {
+      console.error('Error starting queue window:', error);
+      setMsg('Failed to start queue window');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const advanceNow = async () => {
+    if (!selectedEvent) return;
+    
+    setMsg('Advancing queue...');
+    try {
+      const response = await fetch(`${API_URL}/admin/event/${selectedEvent._id}/advance`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setMsg('Queue advanced');
+        // Refresh users
+        const usersResponse = await fetch(`${API_URL}/admin/event/users?eventId=${selectedEvent._id}`);
+        if (usersResponse.ok) {
+          const usersData = await usersResponse.json();
+          setActiveUsers(usersData.active || []);
+          setWaitingUsers(usersData.waiting || []);
+        }
+      } else {
+        setMsg(`Error: ${data.error || 'Failed to advance queue'}`);
+      }
+    } catch (error) {
+      console.error('Error advancing queue:', error);
+      setMsg('Failed to advance queue');
+    }
   };
 
   return (
-    <Container maxWidth="md" sx={{ py: 4 }}>
-      <Typography variant="h4" gutterBottom>Admin</Typography>
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
+      <AppBar position="static">
+        <Toolbar>
+          <EventIcon sx={{ mr: 2 }} />
+          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+            Queue Management System - Admin
+          </Typography>
+          {selectedEvent && (
+            <Chip
+              icon={<PeopleIcon />}
+              label={`${activeUsers.length} Active / ${waitingUsers.length} Waiting`}
+              color="secondary"
+              variant="outlined"
+              sx={{ mr: 2 }}
+            />
+          )}
+          <Button 
+            color="inherit" 
+            startIcon={<RefreshIcon />} 
+            onClick={() => {
+              if (eventId) loadUsers();
+              loadEvents();
+            }}
+          >
+            Refresh
+          </Button>
+        </Toolbar>
+      </AppBar>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6" gutterBottom>Domain</Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <TextField label="Domain" value={domain} onChange={(e) => setDomain(e.target.value)} size="small" />
-          <Button variant="contained" onClick={createDomain}>Create Domain</Button>
-          <Button variant="outlined" onClick={loadEvents}>Load Events</Button>
-          <FormControl size="small" sx={{ minWidth: 220 }}>
-            <InputLabel id="event-select">Event</InputLabel>
-            <Select labelId="event-select" label="Event" value={eventId} onChange={(e) => setEventId(String(e.target.value))}>
-              <MenuItem value=""><em>None</em></MenuItem>
-              {events.map((e) => (
-                <MenuItem key={e.eventId} value={e.eventId}>{e.name}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Stack>
-      </Paper>
+      <Container maxWidth="xl" sx={{ mt: 3, mb: 5, flex: 1 }}>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Tabs 
+            value={tabValue} 
+            onChange={handleTabChange} 
+            aria-label="admin tabs"
+            variant="scrollable"
+            scrollButtons="auto"
+          >
+            <Tab label="Queue Management" {...a11yProps(0)} />
+            <Tab label="Event Settings" {...a11yProps(1)} />
+          </Tabs>
+        </Box>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6" gutterBottom>Create Event</Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <TextField label="Name" value={eventName} onChange={(e) => setEventName(e.target.value)} size="small" />
-          <TextField label="Queue Limit" type="number" value={queueLimit} onChange={(e) => setQueueLimit(Number(e.target.value))} size="small" />
-          <TextField label="Interval (sec)" type="number" value={intervalSec} onChange={(e) => setIntervalSec(Number(e.target.value))} size="small" />
-          <Button variant="contained" onClick={createEvent}>Create Event</Button>
-        </Stack>
-      </Paper>
+        <TabPanel value={tabValue} index={0}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={4}>
+              <Card variant="outlined" sx={{ mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <EventIcon color="primary" sx={{ mr: 1 }} />
+                    Select Event
+                  </Typography>
+                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+                    <InputLabel>Event</InputLabel>
+                    <Select
+                      value={eventId}
+                      label="Event"
+                      onChange={(e) => {
+                        const selected = events.find(evt => evt._id === e.target.value);
+                        setSelectedEvent(selected || null);
+                        setEventId(e.target.value as string);
+                      }}
+                    >
+                      {events.map((event) => (
+                        <MenuItem key={event._id} value={event._id}>
+                          {event.name} ({event.domain})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  {selectedEvent && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Domain:</strong> {selectedEvent.domain}<br />
+                        <strong>Queue Limit:</strong> {selectedEvent.queueLimit || queueLimit} users<br />
+                        <strong>Interval:</strong> {selectedEvent.intervalSec || intervalSec} seconds
+                      </Typography>
+                    </Box>
+                  )}
+                </CardContent>
+              </Card>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6" gutterBottom>Update Config</Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <TextField label="Event ID" value={eventId} onChange={(e) => setEventId(e.target.value)} size="small" fullWidth />
-          <TextField label="Queue Limit" type="number" value={queueLimit} onChange={(e) => setQueueLimit(Number(e.target.value))} size="small" />
-          <TextField label="Interval (sec)" type="number" value={intervalSec} onChange={(e) => setIntervalSec(Number(e.target.value))} size="small" />
-          <Button variant="contained" onClick={updateConfig}>Save</Button>
-        </Stack>
-      </Paper>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <TimerIcon color="primary" sx={{ mr: 1 }} />
+                    Queue Controls
+                  </Typography>
+                  <Stack spacing={2}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      startIcon={<StartIcon />}
+                      onClick={startWindow}
+                      disabled={!eventId || isLoading || (selectedEvent?.isActive === true)}
+                      fullWidth
+                    >
+                      {isLoading ? 'Processing...' : 'Start Queue'}
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      color="secondary"
+                      startIcon={<AdvanceIcon />}
+                      onClick={advanceNow}
+                      disabled={!eventId || isLoading}
+                      fullWidth
+                    >
+                      Advance Queue
+                    </Button>
+                    <Box sx={{ mt: 2, textAlign: 'center' }}>
+                      <Typography variant="h6" color={remaining > 0 ? 'primary' : 'textSecondary'}>
+                        {remaining > 0 ? `${remaining}s remaining` : 'Queue not active'}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
 
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography variant="h6" gutterBottom>Users in Event</Typography>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2}>
-          <TextField label="Event ID" value={eventId} onChange={(e) => setEventId(e.target.value)} size="small" fullWidth />
-          <Button variant="outlined" onClick={loadUsers}>Refresh</Button>
-          <Typography sx={{ alignSelf: 'center' }}>Remaining: {remaining}s</Typography>
-        </Stack>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} mb={2}>
-          <TextField label="User ID" value={newUserId} onChange={(e) => setNewUserId(e.target.value)} size="small" />
-          <Button variant="contained" onClick={enqueueUserApi}>Enqueue User</Button>
-          <Button variant="outlined" onClick={() => enqueueBatch(5)}>Enqueue 5</Button>
-          <Button variant="outlined" color="success" onClick={startWindow}>Start Window</Button>
-          <Button variant="outlined" color="warning" onClick={advanceNow}>Advance Now</Button>
-        </Stack>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={4}>
-          <div>
-            <Typography variant="subtitle1">Active</Typography>
-            <pre style={{ margin: 0 }}>{JSON.stringify(activeUsers, null, 2)}</pre>
-          </div>
-          <div>
-            <Typography variant="subtitle1">Waiting</Typography>
-            <pre style={{ margin: 0 }}>{JSON.stringify(waitingUsers, null, 2)}</pre>
-          </div>
-        </Stack>
-      </Paper>
+            <Grid item xs={12} md={8}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
+                    <PeopleIcon color="primary" sx={{ mr: 1 }} />
+                    Queue Status
+                  </Typography>
+                  
+                  <Typography variant="subtitle1" sx={{ mt: 1, mb: 2, color: 'primary.main' }}>
+                    Active Users ({activeUsers.length})
+                  </Typography>
+                  <List dense sx={{ bgcolor: 'action.hover', borderRadius: 1, mb: 3, p: 1 }}>
+                    {activeUsers.length > 0 ? (
+                      activeUsers.map((userId, index) => (
+                        <React.Fragment key={userId}>
+                          <ListItem>
+                            <ActiveIcon color="success" sx={{ mr: 1 }} />
+                            <ListItemText 
+                              primary={userId} 
+                              secondary={`Position: ${index + 1}`} 
+                            />
+                            <ListItemSecondaryAction>
+                              <Chip 
+                                label="Active" 
+                                size="small" 
+                                color="success" 
+                                variant="outlined"
+                              />
+                            </ListItemSecondaryAction>
+                          </ListItem>
+                          {index < activeUsers.length - 1 && <Divider component="li" />}
+                        </React.Fragment>
+                      ))
+                    ) : (
+                      <ListItem>
+                        <ListItemText primary="No active users" />
+                      </ListItem>
+                    )}
+                  </List>
 
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom>Entry History</Typography>
-        <Button size="small" variant="outlined" onClick={loadEntries} sx={{ mb: 1 }}>Refresh History</Button>
-        <pre style={{ margin: 0, maxHeight: 300, overflow: 'auto' }}>{JSON.stringify(entries, null, 2)}</pre>
-      </Paper>
+                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 2, color: 'warning.main' }}>
+                    Waiting Users ({waitingUsers.length})
+                  </Typography>
+                  <List dense sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
+                    {waitingUsers.length > 0 ? (
+                      waitingUsers.map((userId, index) => (
+                        <React.Fragment key={userId}>
+                          <ListItem>
+                            <WaitingIcon color="warning" sx={{ mr: 1 }} />
+                            <ListItemText 
+                              primary={userId} 
+                              secondary={`Position: ${activeUsers.length + index + 1}`} 
+                            />
+                            <ListItemSecondaryAction>
+                              <Chip 
+                                label="Waiting" 
+                                size="small" 
+                                color="warning" 
+                                variant="outlined"
+                              />
+                            </ListItemSecondaryAction>
+                          </ListItem>
+                          {index < waitingUsers.length - 1 && <Divider component="li" />}
+                        </React.Fragment>
+                      ))
+                    ) : (
+                      <ListItem>
+                        <ListItemText primary="No users waiting" />
+                      </ListItem>
+                    )}
+                  </List>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </TabPanel>
 
-      <Paper sx={{ p: 2 }}>
-        <Typography variant="h6" gutterBottom>Response</Typography>
-        <pre style={{ margin: 0 }}>{msg}</pre>
-      </Paper>
-    </Container>
+        <TabPanel value={tabValue} index={1}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Create New Event
+                  </Typography>
+                  <Stack spacing={2}>
+                    <TextField
+                      label="Domain"
+                      value={domain}
+                      onChange={(e) => setDomain(e.target.value)}
+                      fullWidth
+                      size="small"
+                    />
+                    <Button 
+                      variant="outlined" 
+                      onClick={createDomain}
+                      disabled={!domain}
+                    >
+                      Create Domain
+                    </Button>
+                    <TextField
+                      label="Event Name"
+                      value={eventName}
+                      onChange={(e) => setEventName(e.target.value)}
+                      fullWidth
+                      size="small"
+                    />
+                    <TextField
+                      label="Queue Limit"
+                      type="number"
+                      value={queueLimit}
+                      onChange={(e) => setQueueLimit(Number(e.target.value))}
+                      fullWidth
+                      size="small"
+                    />
+                    <TextField
+                      label="Interval (seconds)"
+                      type="number"
+                      value={intervalSec}
+                      onChange={(e) => setIntervalSec(Number(e.target.value))}
+                      fullWidth
+                      size="small"
+                    />
+                    <Button 
+                      variant="contained" 
+                      onClick={createEvent}
+                      disabled={!eventName || !domain}
+                      fullWidth
+                    >
+                      Create Event
+                    </Button>
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Update Event Settings
+                  </Typography>
+                  {selectedEvent ? (
+                    <Stack spacing={2}>
+                      <TextField
+                        label="Queue Limit"
+                        type="number"
+                        value={queueLimit}
+                        onChange={(e) => setQueueLimit(Number(e.target.value))}
+                        fullWidth
+                        size="small"
+                      />
+                      <TextField
+                        label="Interval (seconds)"
+                        type="number"
+                        value={intervalSec}
+                        onChange={(e) => setIntervalSec(Number(e.target.value))}
+                        fullWidth
+                        size="small"
+                      />
+                      <Button 
+                        variant="contained" 
+                        color="primary"
+                        onClick={updateConfig}
+                        fullWidth
+                      >
+                        Update Settings
+                      </Button>
+                    </Stack>
+                  ) : (
+                    <Typography color="text.secondary">
+                      Select an event to update its settings
+                    </Typography>
+                  )}
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+        </TabPanel>
+      </Container>
+
+      {msg && (
+        <Paper 
+          elevation={3} 
+          sx={{ 
+            position: 'fixed', 
+            bottom: 16, 
+            right: 16, 
+            p: 2, 
+            minWidth: 300,
+            bgcolor: 'background.paper',
+            borderLeft: '4px solid',
+            borderColor: msg.includes('Error') ? 'error.main' : 'success.main'
+          }}
+        >
+          <Typography variant="body2">{msg}</Typography>
+          <Button 
+            size="small" 
+            onClick={() => setMsg('')}
+            sx={{ mt: 1 }}
+          >
+            Dismiss
+          </Button>
+        </Paper>
+      )}
+    </Box>
   );
 }
+
+export default AdminApp;
