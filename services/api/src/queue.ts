@@ -39,42 +39,17 @@ export async function advanceQueue(redis: Redis, eventId: string, limit: number,
     redis.llen(k.waiting),
   ]);
 
-  // If current window is full
-  if (activeLenInitial >= limit) {
-    // If window expired, rotate to next batch
-    if (ttl <= 0) {
-      await redis.del(k.active);
-      const moved: string[] = [];
-      for (let i = 0; i < limit; i++) {
-        const user = await redis.lpop(k.waiting);
-        if (!user) break;
-        moved.push(user);
-      }
-      if (moved.length > 0) {
-        await redis.rpush(k.active, ...moved);
-        // Log entries to Mongo
-        try {
-          const db = await getDb();
-          await db.collection('entries').insertMany(
-            moved.map((u) => ({ eventId, userId: u, enteredAt: new Date() }))
-          );
-        } catch {}
-        // Start a new window when we filled the batch or there are still waiters
-        const remainingWaiting = await redis.llen(k.waiting);
-        if (moved.length === limit || remainingWaiting > 0) {
-          await redis.set(k.timer, '1', 'EX', intervalSec);
-        }
-      }
-    }
-    return;
+  // If current window is full and timer expired
+  if (activeLenInitial >= limit && ttl <= 0) {
+    // Start a new timer
+    await redis.set(k.timer, '1', 'EX', intervalSec);
+    // Don't return here - let the code continue to process waiting users
   }
 
-  // active < limit: Try to admit immediately if no timer running
-  if (ttl > 0) {
-    // Timer running while not full: keep behavior simple; do nothing
-    return;
-  }
-  const slots = Math.max(0, limit - activeLenInitial);
+  // Calculate available slots
+  // If timer expired, we can take up to 'limit' users (replacing the batch)
+  // Otherwise, just fill available slots up to the limit
+  const slots = ttl <= 0 ? limit : Math.max(0, limit - activeLenInitial);
   if (slots === 0 || waitingLenInitial === 0) return;
   const moved: string[] = [];
   for (let i = 0; i < slots; i++) {
@@ -92,8 +67,8 @@ export async function advanceQueue(redis: Redis, eventId: string, limit: number,
       );
     } catch {}
     const newActiveLen = activeLenInitial + moved.length;
-    if (newActiveLen >= limit) {
-      // Start the window now that we've reached capacity
+    if (newActiveLen >= limit || ttl <= 0) {
+      // Start or refresh the window when we reach capacity or the timer expired
       await redis.set(k.timer, '1', 'EX', intervalSec);
     }
   }
