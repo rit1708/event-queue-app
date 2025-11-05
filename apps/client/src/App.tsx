@@ -47,7 +47,7 @@ interface Event {
 
 // Simple SDK implementation
 const sdk = {
-  baseUrl: API_URL,
+  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000',
 
   init: (opts: { baseUrl: string }) => {
     sdk.baseUrl = opts.baseUrl.replace(/\/$/, '');
