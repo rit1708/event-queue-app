@@ -38,6 +38,31 @@ const router = express.Router();
 // Mount API router under /api
 app.use('/api', router);
 
+// Simple scheduler to auto-advance active events
+async function schedulerTick() {
+  try {
+    const db = await getDb();
+    const events = await db
+      .collection('events')
+      .find({ isActive: true })
+      .project({ _id: 1, queueLimit: 1, intervalSec: 1 })
+      .toArray();
+    if (events.length === 0) return;
+
+    const redis = await getRedis();
+    for (const e of events as any[]) {
+      const eventId = String(e._id);
+      await ensureEventKeys(redis, eventId);
+      await advanceQueue(redis, eventId, e.queueLimit, e.intervalSec);
+    }
+  } catch (err) {
+    console.error('schedulerTick error:', err);
+  }
+}
+
+// Run scheduler every 1s
+setInterval(schedulerTick, 1000);
+
 // Health check
 router.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 
@@ -315,7 +340,7 @@ app.post('/admin/event/enqueue-batch', async (req: Request, res: Response) => {
 });
 
 // Admin: start the queue window now (even if not full)
-app.post('/admin/event/start', async (req: Request, res: Response) => {
+router.post('/admin/event/start', async (req: Request, res: Response) => {
   const schema = z.object({ eventId: z.string().min(1) });
   const body = schema.parse(req.body);
   const db = await getDb();
@@ -340,37 +365,40 @@ app.post('/admin/event/start', async (req: Request, res: Response) => {
   if (activeLen > 0) {
     await redis.set(kTimer, '1', 'EX', event.intervalSec);
   }
+  // Mark event active
+  await db
+    .collection('events')
+    .updateOne({ _id: new ObjectId(body.eventId) }, { $set: { isActive: true } });
   res.json({ ok: true });
 });
 
-// Admin: advance (rotate) immediately to next batch
-app.post('/admin/event/advance', async (req: Request, res: Response) => {
-  const schema = z.object({ eventId: z.string().min(1) });
-  const body = schema.parse(req.body);
-  const db = await getDb();
-  const event = await db
-    .collection('events')
-    .findOne({ _id: new ObjectId(body.eventId) });
-  if (!event) return res.status(404).json({ error: 'Event not found' });
-  const redis = await getRedis();
-  const kActive = `q:${body.eventId}:active`;
-  const kWaiting = `q:${body.eventId}:waiting`;
-  const kTimer = `q:${body.eventId}:timer`;
-  await ensureEventKeys(redis, body.eventId);
-  await redis.del(kActive);
-  const moved: string[] = [];
-  for (let i = 0; i < event.queueLimit; i++) {
-    const user = await redis.lpop(kWaiting);
-    if (!user) break;
-    moved.push(user);
-  }
-  if (moved.length > 0) {
-    await redis.rpush(kActive, ...moved);
-    await redis.set(kTimer, '1', 'EX', event.intervalSec);
-  } else {
+// Admin: stop the queue window now
+router.post('/admin/event/stop', async (req: Request, res: Response) => {
+  try {
+    const schema = z.object({ eventId: z.string().min(1) });
+    const body = schema.parse(req.body);
+    const db = await getDb();
+    const event = await db
+      .collection('events')
+      .findOne({ _id: new ObjectId(body.eventId) });
+    if (!event) return res.status(404).json({ error: 'Event not found' });
+
+    const redis = await getRedis();
+    const kActive = `q:${body.eventId}:active`;
+    const kTimer = `q:${body.eventId}:timer`;
+    await ensureEventKeys(redis, body.eventId);
+    // Clear active batch and timer
+    await redis.del(kActive);
     await redis.del(kTimer);
+    // Mark event inactive
+    await db
+      .collection('events')
+      .updateOne({ _id: new ObjectId(body.eventId) }, { $set: { isActive: false } });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error stopping queue:', error);
+    res.status(500).json({ error: 'Failed to stop queue' });
   }
-  res.json({ ok: true, moved });
 });
 
 // Admin: get entry history for an event

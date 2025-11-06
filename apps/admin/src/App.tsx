@@ -34,7 +34,6 @@ import {
   Event as EventIcon,
   Refresh as RefreshIcon,
   PlayArrow as StartIcon,
-  SkipNext as AdvanceIcon,
   CheckCircle as ActiveIcon,
   Schedule as WaitingIcon
 } from '@mui/icons-material';
@@ -110,6 +109,9 @@ function AdminApp() {
       const data = await response.json();
       setActiveUsers(data.active || []);
       setWaitingUsers(data.waiting || []);
+      if (typeof data.remaining === 'number') {
+        setRemaining(data.remaining);
+      }
     } catch (error) {
       console.error('Failed to load users:', error);
       setMsg('Failed to load users');
@@ -136,6 +138,15 @@ function AdminApp() {
   // Load users when event changes
   useEffect(() => {
     loadUsers();
+  }, [eventId]);
+
+  // Polling for real-time updates without sockets
+  useEffect(() => {
+    if (!eventId) return;
+    const id = setInterval(() => {
+      loadUsers();
+    }, 2000);
+    return () => clearInterval(id);
   }, [eventId]);
 
   // API functions
@@ -242,7 +253,7 @@ function AdminApp() {
     setMsg('Starting queue window...');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/admin/event/advance`, {
+      const response = await fetch(`${API_URL}/admin/event/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ eventId: selectedEvent._id })
@@ -265,30 +276,32 @@ function AdminApp() {
     }
   };
 
-  const advanceNow = async () => {
+  const stopWindow = async () => {
     if (!selectedEvent) return;
     
-    setMsg('Advancing queue...');
+    setMsg('Stopping queue window...');
+    setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/admin/event/${selectedEvent._id}/advance`, {
-        method: 'POST'
+      const response = await fetch(`${API_URL}/admin/event/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ eventId: selectedEvent._id })
       });
       const data = await response.json();
       if (response.ok) {
-        setMsg('Queue advanced');
-        // Refresh users
-        const usersResponse = await fetch(`${API_URL}/admin/event/users?eventId=${selectedEvent._id}`);
-        if (usersResponse.ok) {
-          const usersData = await usersResponse.json();
-          setActiveUsers(usersData.active || []);
-          setWaitingUsers(usersData.waiting || []);
-        }
+        setMsg('Queue window stopped');
+        setSelectedEvent(prev => prev ? { ...prev, isActive: false } : null);
+        setRemaining(0);
+        // Refresh users after stopping
+        loadUsers();
       } else {
-        setMsg(`Error: ${data.error || 'Failed to advance queue'}`);
+        setMsg(`Error: ${data.error || 'Failed to stop queue window'}`);
       }
     } catch (error) {
-      console.error('Error advancing queue:', error);
-      setMsg('Failed to advance queue');
+      console.error('Error stopping queue window:', error);
+      setMsg('Failed to stop queue window');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -394,13 +407,13 @@ function AdminApp() {
                     </Button>
                     <Button
                       variant="outlined"
-                      color="secondary"
-                      startIcon={<AdvanceIcon />}
-                      onClick={advanceNow}
-                      disabled={!eventId || isLoading}
+                      color="error"
+                      startIcon={<RefreshIcon />}
+                      onClick={stopWindow}
+                      disabled={!eventId || isLoading || (selectedEvent?.isActive !== true)}
                       fullWidth
                     >
-                      Advance Queue
+                      Stop Queue
                     </Button>
                     <Box sx={{ mt: 2, textAlign: 'center' }}>
                       <Typography variant="h6" color={remaining > 0 ? 'primary' : 'textSecondary'}>
