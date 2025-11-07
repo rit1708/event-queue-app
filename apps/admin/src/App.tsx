@@ -1,76 +1,83 @@
 import React, { useEffect, useState } from 'react';
 import {
-  AppBar,
   Box,
   Button,
   Card,
   CardContent,
-  Container,
-  FormControl,
+  Drawer,
   Grid,
-  InputLabel,
-  MenuItem,
-  Paper,
-  Select,
-  SelectChangeEvent,
-  Stack,
-  Tab,
-  Tabs,
-  TextField,
-  Toolbar,
-  Typography,
   List,
   ListItem,
+  ListItemButton,
+  ListItemIcon,
   ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
+  Typography,
   Chip,
+  Avatar,
+  alpha,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Paper,
+  IconButton,
+  CircularProgress,
+  Stack,
+  LinearProgress,
   Divider,
-  CircularProgress
 } from '@mui/material';
 import {
-  People as PeopleIcon,
-  Timer as TimerIcon,
+  Dashboard as DashboardIcon,
   Event as EventIcon,
-  Refresh as RefreshIcon,
+  People as PeopleIcon,
+  Settings as SettingsIcon,
+  BarChart as BarChartIcon,
+  TrendingUp as TrendingUpIcon,
   PlayArrow as StartIcon,
-  CheckCircle as ActiveIcon,
-  Schedule as WaitingIcon
+  Stop as StopIcon,
+  Refresh as RefreshIcon,
+  CheckCircle as CheckCircleIcon,
+  Schedule as ScheduleIcon,
+  Timer as TimerIcon,
 } from '@mui/icons-material';
+import { LineChart, PieChart } from '@mui/x-charts';
+import { styled } from '@mui/material/styles';
 
 const API_URL = 'http://localhost:4000/api';
 
-interface TabPanelProps {
-  children?: React.ReactNode;
-  index: number;
-  value: number;
-}
+const drawerWidth = 260;
 
-function TabPanel(props: TabPanelProps) {
-  const { children, value, index, ...other } = props;
-  return (
-    <div
-      role="tabpanel"
-      hidden={value !== index}
-      id={`admin-tabpanel-${index}`}
-      aria-labelledby={`admin-tab-${index}`}
-      {...other}
-    >
-      {value === index && (
-        <Box sx={{ p: 3 }}>
-          {children}
-        </Box>
-      )}
-    </div>
-  );
-}
+const SidebarDrawer = styled(Drawer)(({ theme }) => ({
+  width: drawerWidth,
+  flexShrink: 0,
+  '& .MuiDrawer-paper': {
+    width: drawerWidth,
+    boxSizing: 'border-box',
+    background: 'linear-gradient(180deg, #1e40af 0%, #1e3a8a 100%)',
+    color: 'white',
+    borderRight: 'none',
+  },
+}));
 
-function a11yProps(index: number) {
-  return {
-    id: `admin-tab-${index}`,
-    'aria-controls': `admin-tabpanel-${index}`,
-  };
-}
+const KPICard = styled(Card)(({ theme }) => ({
+  background: theme.palette.background.paper,
+  borderRadius: 12,
+  border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
+  transition: 'all 0.3s ease',
+  '&:hover': {
+    transform: 'translateY(-4px)',
+    boxShadow: '0 8px 16px rgba(0, 0, 0, 0.1)',
+  },
+}));
+
+const MainContent = styled(Box)(({ theme }) => ({
+  flexGrow: 1,
+  backgroundColor: '#f5f7fa',
+  minHeight: '100vh',
+  padding: theme.spacing(3),
+}));
 
 interface Event {
   _id: string;
@@ -79,556 +86,658 @@ interface Event {
   queueLimit: number;
   intervalSec: number;
   isActive?: boolean;
+  createdAt?: string;
+}
+
+interface QueueData {
+  active: string[];
+  waiting: string[];
+  remaining: number;
 }
 
 function AdminApp() {
-  // State management
-  const [tabValue, setTabValue] = useState(0);
-  const [domain, setDomain] = useState('demo.com');
-  const [eventName, setEventName] = useState('');
-  const [queueLimit, setQueueLimit] = useState(2);
-  const [intervalSec, setIntervalSec] = useState(30);
-  const [eventId, setEventId] = useState('');
-  const [msg, setMsg] = useState('');
-  const [activeUsers, setActiveUsers] = useState<string[]>([]);
-  const [waitingUsers, setWaitingUsers] = useState<string[]>([]);
+  const [selectedView, setSelectedView] = useState('dashboard');
   const [events, setEvents] = useState<Event[]>([]);
-  const [remaining, setRemaining] = useState<number>(0);
-  const [isLoading, setIsLoading] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
+  const [queueData, setQueueData] = useState<QueueData>({ active: [], waiting: [], remaining: 0 });
+  const [isLoading, setIsLoading] = useState(false);
+  const [history, setHistory] = useState<{ t: number; active: number; waiting: number }[]>([]);
 
-  // Event handlers
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
-  };
-
-  const loadUsers = async () => {
-    if (!eventId) return;
-    try {
-      const response = await fetch(`${API_URL}/admin/event/users?eventId=${eventId}`);
-      const data = await response.json();
-      setActiveUsers(data.active || []);
-      setWaitingUsers(data.waiting || []);
-      if (typeof data.remaining === 'number') {
-        setRemaining(data.remaining);
-      }
-    } catch (error) {
-      console.error('Failed to load users:', error);
-      setMsg('Failed to load users');
-    }
-  };
-
-  const loadEvents = async (): Promise<void> => {
+  const loadEvents = async () => {
     try {
       const response = await fetch(`${API_URL}/events`);
       if (response.ok) {
         const data = await response.json();
         setEvents(data);
-        if (data.length > 0 && !eventId) {
-          setEventId(data[0]._id);
+        if (data.length > 0 && !selectedEvent) {
+          setSelectedEvent(data[0]);
         }
-      } else {
-        console.error('Failed to fetch events');
       }
     } catch (error) {
       console.error('Error loading events:', error);
     }
   };
 
-  // Load users when event changes
-  useEffect(() => {
-    loadUsers();
-  }, [eventId]);
-
-  // Polling for real-time updates without sockets
-  useEffect(() => {
+  const loadQueueData = async (eventId: string) => {
     if (!eventId) return;
-    const id = setInterval(() => {
-      loadUsers();
-    }, 2000);
-    return () => clearInterval(id);
-  }, [eventId]);
-
-  // API functions
-  const createDomain = async () => {
-    if (!domain) {
-      setMsg('Please provide a domain name');
-      return;
-    }
-    
-    setMsg('Creating domain...');
     try {
-      const response = await fetch(`${API_URL}/admin/domain`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: domain.replace(/^https?:\/\//, '').split('/')[0], // Extract domain name
-          domain: domain
-        })
-      });
+      const response = await fetch(`${API_URL}/admin/event/users?eventId=${eventId}`);
       const data = await response.json();
-      if (response.ok) {
-        setMsg(`Domain ${domain} created successfully`);
-        // Refresh events list
-        const eventsResponse = await fetch(`${API_URL}/events`);
-        if (eventsResponse.ok) {
-          const eventsData = await eventsResponse.json();
-          setEvents(eventsData);
-        }
-      } else {
-        setMsg(`Error: ${data.error || 'Failed to create domain'}`);
-      }
+      setQueueData({
+        active: data.active || [],
+        waiting: data.waiting || [],
+        remaining: data.remaining || 0,
+      });
+      
+      const now = Date.now();
+      setHistory((prev) => {
+        const next = [...prev, { 
+          t: now, 
+          active: (data.active || []).length, 
+          waiting: (data.waiting || []).length 
+        }];
+        return next.slice(-30);
+      });
     } catch (error) {
-      console.error('Error creating domain:', error);
-      setMsg('Failed to create domain');
+      console.error('Failed to load queue data:', error);
     }
   };
 
-  const createEvent = async () => {
-    if (!eventName || !domain) {
-      setMsg('Please provide event name and domain');
-      return;
-    }
-    
-    setMsg('Creating event...');
-    try {
-      const response = await fetch(`${API_URL}/admin/event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: eventName,
-          domain,
-          queueLimit,
-          intervalSec
-        })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setMsg(`Event ${eventName} created successfully`);
-        // Refresh events list
-        const eventsResponse = await fetch(`${API_URL}/events`);
-        if (eventsResponse.ok) {
-          const eventsData = await eventsResponse.json();
-          setEvents(eventsData);
-        }
-      } else {
-        setMsg(`Error: ${data.error || 'Failed to create event'}`);
-      }
-    } catch (error) {
-      console.error('Error creating event:', error);
-      setMsg('Failed to create event');
-    }
-  };
+  useEffect(() => {
+    loadEvents();
+  }, []);
 
-  const updateConfig = async () => {
+  useEffect(() => {
+    if (selectedEvent) {
+      loadQueueData(selectedEvent._id);
+      const interval = setInterval(() => {
+        loadQueueData(selectedEvent._id);
+      }, 2000);
+      return () => clearInterval(interval);
+    }
+  }, [selectedEvent]);
+
+  const startQueue = async () => {
     if (!selectedEvent) return;
-    
-    setMsg('Updating configuration...');
-    try {
-      const response = await fetch(`${API_URL}/admin/event/${selectedEvent._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          queueLimit,
-          intervalSec
-        })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setMsg('Configuration updated successfully');
-        // Update selected event
-        setSelectedEvent(prev => prev ? { ...prev, queueLimit, intervalSec } : null);
-      } else {
-        setMsg(`Error: ${data.error || 'Failed to update configuration'}`);
-      }
-    } catch (error) {
-      console.error('Error updating configuration:', error);
-      setMsg('Failed to update configuration');
-    }
-  };
-
-  const startWindow = async () => {
-    if (!selectedEvent) return;
-    
-    setMsg('Starting queue window...');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/admin/event/start`, {
+      await fetch(`${API_URL}/admin/event/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: selectedEvent._id })
+        body: JSON.stringify({ eventId: selectedEvent._id }),
       });
-      const data = await response.json();
-      if (response.ok) {
-        setMsg('Queue window started');
-        // Update selected event
-        setSelectedEvent(prev => prev ? { ...prev, isActive: true } : null);
-        // Refresh users after starting
-        loadUsers();
-      } else {
-        setMsg(`Error: ${data.error || 'Failed to start queue window'}`);
-      }
+      loadEvents();
+      loadQueueData(selectedEvent._id);
     } catch (error) {
-      console.error('Error starting queue window:', error);
-      setMsg('Failed to start queue window');
+      console.error('Error starting queue:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const stopWindow = async () => {
+  const stopQueue = async () => {
     if (!selectedEvent) return;
-    
-    setMsg('Stopping queue window...');
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_URL}/admin/event/stop`, {
+      await fetch(`${API_URL}/admin/event/stop`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: selectedEvent._id })
+        body: JSON.stringify({ eventId: selectedEvent._id }),
       });
-      const data = await response.json();
-      if (response.ok) {
-        setMsg('Queue window stopped');
-        setSelectedEvent(prev => prev ? { ...prev, isActive: false } : null);
-        setRemaining(0);
-        // Refresh users after stopping
-        loadUsers();
-      } else {
-        setMsg(`Error: ${data.error || 'Failed to stop queue window'}`);
-      }
+      loadEvents();
+      loadQueueData(selectedEvent._id);
     } catch (error) {
-      console.error('Error stopping queue window:', error);
-      setMsg('Failed to stop queue window');
+      console.error('Error stopping queue:', error);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const totalUsers = queueData.active.length + queueData.waiting.length;
+  const activeQueues = events.filter(e => e.isActive).length;
+  const totalEvents = events.length;
+
+  const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
+    { id: 'events', label: 'Events', icon: <EventIcon /> },
+    { id: 'users', label: 'Users', icon: <PeopleIcon /> },
+    { id: 'analytics', label: 'Analytics', icon: <BarChartIcon /> },
+    { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
+  ];
+
+  const renderDashboard = () => (
+    <Box>
+      <Typography variant="h4" sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}>
+        Dashboard
+      </Typography>
+
+      {/* KPI Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <KPICard>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Total Users
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#10b981' }}>
+                    {totalUsers}
+                  </Typography>
+                </Box>
+                <Avatar sx={{ bgcolor: alpha('#10b981', 0.1), width: 56, height: 56 }}>
+                  <PeopleIcon sx={{ color: '#10b981', fontSize: 28 }} />
+                </Avatar>
+              </Box>
+              <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#10b981' }} />
+                <Typography variant="caption" color="text.secondary">
+                  {queueData.active.length} active, {queueData.waiting.length} waiting
+                </Typography>
+              </Box>
+            </CardContent>
+          </KPICard>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <KPICard>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Total Events
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#ef4444' }}>
+                    {totalEvents}
+                  </Typography>
+                </Box>
+                <Avatar sx={{ bgcolor: alpha('#ef4444', 0.1), width: 56, height: 56 }}>
+                  <EventIcon sx={{ color: '#ef4444', fontSize: 28 }} />
+                </Avatar>
+              </Box>
+              <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ef4444' }} />
+                <Typography variant="caption" color="text.secondary">
+                  {activeQueues} active queues
+                </Typography>
+              </Box>
+            </CardContent>
+          </KPICard>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <KPICard>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Active Queues
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#f59e0b' }}>
+                    {activeQueues}
+                  </Typography>
+                </Box>
+                <Avatar sx={{ bgcolor: alpha('#f59e0b', 0.1), width: 56, height: 56 }}>
+                  <TrendingUpIcon sx={{ color: '#f59e0b', fontSize: 28 }} />
+                </Avatar>
+              </Box>
+              <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#f59e0b' }} />
+                <Typography variant="caption" color="text.secondary">
+                  Currently running
+                </Typography>
+              </Box>
+            </CardContent>
+          </KPICard>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={3}>
+          <KPICard>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Queue Capacity
+                  </Typography>
+                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#6366f1' }}>
+                    {selectedEvent?.queueLimit || 0}
+                  </Typography>
+                </Box>
+                <Avatar sx={{ bgcolor: alpha('#6366f1', 0.1), width: 56, height: 56 }}>
+                  <TimerIcon sx={{ color: '#6366f1', fontSize: 28 }} />
+                </Avatar>
+              </Box>
+              <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#6366f1' }} />
+                <Typography variant="caption" color="text.secondary">
+                  Per batch
+                </Typography>
+              </Box>
+            </CardContent>
+          </KPICard>
+        </Grid>
+      </Grid>
+
+      {/* Charts Row */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} md={8}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                Queue Activity Over Time
+              </Typography>
+              {history.length > 0 ? (
+                <LineChart
+                  width={700}
+                  height={300}
+                  series={[
+                    { 
+                      data: history.map(h => h.active), 
+                      label: 'Active Users', 
+                      color: '#10b981',
+                      curve: 'monotone',
+                    },
+                    { 
+                      data: history.map(h => h.waiting), 
+                      label: 'Waiting Users', 
+                      color: '#f59e0b',
+                      curve: 'monotone',
+                    },
+                  ]}
+                  xAxis={[{ 
+                    scaleType: 'point', 
+                    data: history.map((_, i) => i.toString()),
+                  }]}
+                  grid={{ vertical: true, horizontal: true }}
+                />
+              ) : (
+                <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography color="text.secondary">No data available</Typography>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={4}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                User Distribution
+              </Typography>
+              <PieChart
+                height={300}
+                series={[{
+                  data: [
+                    { id: 0, value: queueData.active.length, label: 'Active', color: '#10b981' },
+                    { id: 1, value: queueData.waiting.length, label: 'Waiting', color: '#f59e0b' },
+                  ],
+                  innerRadius: 40,
+                  outerRadius: 100,
+                }]}
+              />
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+
+      {/* Recent Events Table */}
+      <Card>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Recent Events
+            </Typography>
+            <IconButton onClick={loadEvents}>
+              <RefreshIcon />
+            </IconButton>
+          </Box>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: alpha('#6366f1', 0.05) }}>
+                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Domain</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Queue Limit</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Interval</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {events.slice(0, 5).map((event) => (
+                  <TableRow key={event._id} hover>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {event.name}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{event.domain}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={event.isActive ? 'Active' : 'Inactive'}
+                        color={event.isActive ? 'success' : 'default'}
+                        size="small"
+                        sx={{ fontWeight: 600 }}
+                      />
+                    </TableCell>
+                    <TableCell>{event.queueLimit}</TableCell>
+                    <TableCell>{event.intervalSec}s</TableCell>
+                    <TableCell>
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setSelectedEvent(event);
+                          setSelectedView('events');
+                        }}
+                      >
+                        <TrendingUpIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+
+  const renderEvents = () => (
+    <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>
+          Events Management
+        </Typography>
+        <Button variant="contained" startIcon={<EventIcon />}>
+          Create Event
+        </Button>
+      </Box>
+
+      {selectedEvent && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Box>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  {selectedEvent.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {selectedEvent.domain}
+                </Typography>
+              </Box>
+              <Stack direction="row" spacing={2}>
+                <Button
+                  variant="contained"
+                  color="success"
+                  startIcon={<StartIcon />}
+                  onClick={startQueue}
+                  disabled={isLoading || selectedEvent.isActive}
+                >
+                  Start
+                </Button>
+                <Button
+                  variant="contained"
+                  color="error"
+                  startIcon={<StopIcon />}
+                  onClick={stopQueue}
+                  disabled={isLoading || !selectedEvent.isActive}
+                >
+                  Stop
+                </Button>
+              </Stack>
+            </Box>
+            {queueData.remaining > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="body2">Time Remaining</Typography>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {Math.floor(queueData.remaining / 60)}:{(queueData.remaining % 60).toString().padStart(2, '0')}
+                  </Typography>
+                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={(queueData.remaining / (selectedEvent.intervalSec || 30)) * 100}
+                  sx={{ height: 8, borderRadius: 4 }}
+                />
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardContent>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: alpha('#6366f1', 0.05) }}>
+                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Domain</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Queue Limit</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Interval</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {events.map((event) => (
+                  <TableRow 
+                    key={event._id} 
+                    hover
+                    onClick={() => setSelectedEvent(event)}
+                    sx={{ cursor: 'pointer', bgcolor: selectedEvent?._id === event._id ? alpha('#6366f1', 0.05) : 'inherit' }}
+                  >
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {event.name}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{event.domain}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={event.isActive ? 'Active' : 'Inactive'}
+                        color={event.isActive ? 'success' : 'default'}
+                        size="small"
+                        sx={{ fontWeight: 600 }}
+                      />
+                    </TableCell>
+                    <TableCell>{event.queueLimit}</TableCell>
+                    <TableCell>{event.intervalSec}s</TableCell>
+                    <TableCell>
+                      <IconButton size="small">
+                        <SettingsIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+
+  const renderUsers = () => (
+    <Box>
+      <Typography variant="h4" sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}>
+        Queue Users
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                <CheckCircleIcon sx={{ color: '#10b981', mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Active Users ({queueData.active.length})
+                </Typography>
+              </Box>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: alpha('#10b981', 0.1) }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Position</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>User ID</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {queueData.active.map((userId, index) => (
+                      <TableRow key={userId}>
+                        <TableCell>#{index + 1}</TableCell>
+                        <TableCell>{userId}</TableCell>
+                        <TableCell>
+                          <Chip label="Active" color="success" size="small" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                <ScheduleIcon sx={{ color: '#f59e0b', mr: 1 }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Waiting Users ({queueData.waiting.length})
+                </Typography>
+              </Box>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: alpha('#f59e0b', 0.1) }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Position</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>User ID</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {queueData.waiting.map((userId, index) => (
+                      <TableRow key={userId}>
+                        <TableCell>#{queueData.active.length + index + 1}</TableCell>
+                        <TableCell>{userId}</TableCell>
+                        <TableCell>
+                          <Chip label="Waiting" color="warning" size="small" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+
+  const renderAnalytics = () => (
+    <Box>
+      <Typography variant="h4" sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}>
+        Analytics
+      </Typography>
+      <Grid container spacing={3}>
+        <Grid item xs={12}>
+          <Card>
+            <CardContent>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                Queue Performance
+              </Typography>
+              {history.length > 0 ? (
+                <LineChart
+                  width={900}
+                  height={400}
+                  series={[
+                    { data: history.map(h => h.active), label: 'Active', color: '#10b981', curve: 'monotone' },
+                    { data: history.map(h => h.waiting), label: 'Waiting', color: '#f59e0b', curve: 'monotone' },
+                  ]}
+                  xAxis={[{ scaleType: 'point', data: history.map((_, i) => i.toString()) }]}
+                  grid={{ vertical: true, horizontal: true }}
+                />
+              ) : (
+                <Box sx={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Typography color="text.secondary">No data available</Typography>
+                </Box>
+              )}
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
+    </Box>
+  );
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="static">
-        <Toolbar>
-          <EventIcon sx={{ mr: 2 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            Queue Management System - Admin
+    <Box sx={{ display: 'flex' }}>
+      <SidebarDrawer variant="permanent" anchor="left">
+        <Box sx={{ p: 3, borderBottom: '1px solid rgba(255, 255, 255, 0.1)' }}>
+          <Typography variant="h5" sx={{ fontWeight: 700, color: 'white' }}>
+            Queue Admin
           </Typography>
-          {selectedEvent && (
-            <Chip
-              icon={<PeopleIcon />}
-              label={`${activeUsers.length} Active / ${waitingUsers.length} Waiting`}
-              color="secondary"
-              variant="outlined"
-              sx={{ mr: 2 }}
-            />
-          )}
-          <Button 
-            color="inherit" 
-            startIcon={<RefreshIcon />} 
-            onClick={() => {
-              if (eventId) loadUsers();
-              loadEvents();
-            }}
-          >
-            Refresh
-          </Button>
-        </Toolbar>
-      </AppBar>
-
-      <Container maxWidth="xl" sx={{ mt: 3, mb: 5, flex: 1 }}>
-        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-          <Tabs 
-            value={tabValue} 
-            onChange={handleTabChange} 
-            aria-label="admin tabs"
-            variant="scrollable"
-            scrollButtons="auto"
-          >
-            <Tab label="Queue Management" {...a11yProps(0)} />
-            <Tab label="Event Settings" {...a11yProps(1)} />
-          </Tabs>
         </Box>
+        <List sx={{ pt: 2 }}>
+          {menuItems.map((item) => (
+            <ListItem key={item.id} disablePadding>
+              <ListItemButton
+                selected={selectedView === item.id}
+                onClick={() => setSelectedView(item.id)}
+                sx={{
+                  mx: 1,
+                  mb: 0.5,
+                  borderRadius: 2,
+                  '&.Mui-selected': {
+                    bgcolor: 'rgba(255, 255, 255, 0.15)',
+                    '&:hover': {
+                      bgcolor: 'rgba(255, 255, 255, 0.2)',
+                    },
+                  },
+                  '&:hover': {
+                    bgcolor: 'rgba(255, 255, 255, 0.1)',
+                  },
+                }}
+              >
+                <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText 
+                  primary={item.label} 
+                  primaryTypographyProps={{ 
+                    fontWeight: selectedView === item.id ? 600 : 400,
+                    color: 'white',
+                  }}
+                />
+              </ListItemButton>
+            </ListItem>
+          ))}
+        </List>
+      </SidebarDrawer>
 
-        <TabPanel value={tabValue} index={0}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={4}>
-              <Card variant="outlined" sx={{ mb: 3 }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                    <EventIcon color="primary" sx={{ mr: 1 }} />
-                    Select Event
-                  </Typography>
-                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                    <InputLabel>Event</InputLabel>
-                    <Select
-                      value={eventId}
-                      label="Event"
-                      onChange={(e) => {
-                        const selected = events.find(evt => evt._id === e.target.value);
-                        setSelectedEvent(selected || null);
-                        setEventId(e.target.value as string);
-                      }}
-                    >
-                      {events.map((event) => (
-                        <MenuItem key={event._id} value={event._id}>
-                          {event.name} ({event.domain})
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                  {selectedEvent && (
-                    <Box sx={{ mt: 2 }}>
-                      <Typography variant="body2" color="text.secondary">
-                        <strong>Domain:</strong> {selectedEvent.domain}<br />
-                        <strong>Queue Limit:</strong> {selectedEvent.queueLimit || queueLimit} users<br />
-                        <strong>Interval:</strong> {selectedEvent.intervalSec || intervalSec} seconds
-                      </Typography>
-                    </Box>
-                  )}
-                </CardContent>
-              </Card>
-
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                    <TimerIcon color="primary" sx={{ mr: 1 }} />
-                    Queue Controls
-                  </Typography>
-                  <Stack spacing={2}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      startIcon={<StartIcon />}
-                      onClick={startWindow}
-                      disabled={!eventId || isLoading || (selectedEvent?.isActive === true)}
-                      fullWidth
-                    >
-                      {isLoading ? 'Processing...' : 'Start Queue'}
-                    </Button>
-                    <Button
-                      variant="outlined"
-                      color="error"
-                      startIcon={<RefreshIcon />}
-                      onClick={stopWindow}
-                      disabled={!eventId || isLoading || (selectedEvent?.isActive !== true)}
-                      fullWidth
-                    >
-                      Stop Queue
-                    </Button>
-                    <Box sx={{ mt: 2, textAlign: 'center' }}>
-                      <Typography variant="h6" color={remaining > 0 ? 'primary' : 'textSecondary'}>
-                        {remaining > 0 ? `${remaining}s remaining` : 'Queue not active'}
-                      </Typography>
-                    </Box>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-
-            <Grid item xs={12} md={8}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center' }}>
-                    <PeopleIcon color="primary" sx={{ mr: 1 }} />
-                    Queue Status
-                  </Typography>
-                  
-                  <Typography variant="subtitle1" sx={{ mt: 1, mb: 2, color: 'primary.main' }}>
-                    Active Users ({activeUsers.length})
-                  </Typography>
-                  <List dense sx={{ bgcolor: 'action.hover', borderRadius: 1, mb: 3, p: 1 }}>
-                    {activeUsers.length > 0 ? (
-                      activeUsers.map((userId, index) => (
-                        <React.Fragment key={userId}>
-                          <ListItem>
-                            <ActiveIcon color="success" sx={{ mr: 1 }} />
-                            <ListItemText 
-                              primary={userId} 
-                              secondary={`Position: ${index + 1}`} 
-                            />
-                            <ListItemSecondaryAction>
-                              <Chip 
-                                label="Active" 
-                                size="small" 
-                                color="success" 
-                                variant="outlined"
-                              />
-                            </ListItemSecondaryAction>
-                          </ListItem>
-                          {index < activeUsers.length - 1 && <Divider component="li" />}
-                        </React.Fragment>
-                      ))
-                    ) : (
-                      <ListItem>
-                        <ListItemText primary="No active users" />
-                      </ListItem>
-                    )}
-                  </List>
-
-                  <Typography variant="subtitle1" sx={{ mt: 3, mb: 2, color: 'warning.main' }}>
-                    Waiting Users ({waitingUsers.length})
-                  </Typography>
-                  <List dense sx={{ bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
-                    {waitingUsers.length > 0 ? (
-                      waitingUsers.map((userId, index) => (
-                        <React.Fragment key={userId}>
-                          <ListItem>
-                            <WaitingIcon color="warning" sx={{ mr: 1 }} />
-                            <ListItemText 
-                              primary={userId} 
-                              secondary={`Position: ${activeUsers.length + index + 1}`} 
-                            />
-                            <ListItemSecondaryAction>
-                              <Chip 
-                                label="Waiting" 
-                                size="small" 
-                                color="warning" 
-                                variant="outlined"
-                              />
-                            </ListItemSecondaryAction>
-                          </ListItem>
-                          {index < waitingUsers.length - 1 && <Divider component="li" />}
-                        </React.Fragment>
-                      ))
-                    ) : (
-                      <ListItem>
-                        <ListItemText primary="No users waiting" />
-                      </ListItem>
-                    )}
-                  </List>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </TabPanel>
-
-        <TabPanel value={tabValue} index={1}>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Create New Event
-                  </Typography>
-                  <Stack spacing={2}>
-                    <TextField
-                      label="Domain"
-                      value={domain}
-                      onChange={(e) => setDomain(e.target.value)}
-                      fullWidth
-                      size="small"
-                    />
-                    <Button 
-                      variant="outlined" 
-                      onClick={createDomain}
-                      disabled={!domain}
-                    >
-                      Create Domain
-                    </Button>
-                    <TextField
-                      label="Event Name"
-                      value={eventName}
-                      onChange={(e) => setEventName(e.target.value)}
-                      fullWidth
-                      size="small"
-                    />
-                    <TextField
-                      label="Queue Limit"
-                      type="number"
-                      value={queueLimit}
-                      onChange={(e) => setQueueLimit(Number(e.target.value))}
-                      fullWidth
-                      size="small"
-                    />
-                    <TextField
-                      label="Interval (seconds)"
-                      type="number"
-                      value={intervalSec}
-                      onChange={(e) => setIntervalSec(Number(e.target.value))}
-                      fullWidth
-                      size="small"
-                    />
-                    <Button 
-                      variant="contained" 
-                      onClick={createEvent}
-                      disabled={!eventName || !domain}
-                      fullWidth
-                    >
-                      Create Event
-                    </Button>
-                  </Stack>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined">
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Update Event Settings
-                  </Typography>
-                  {selectedEvent ? (
-                    <Stack spacing={2}>
-                      <TextField
-                        label="Queue Limit"
-                        type="number"
-                        value={queueLimit}
-                        onChange={(e) => setQueueLimit(Number(e.target.value))}
-                        fullWidth
-                        size="small"
-                      />
-                      <TextField
-                        label="Interval (seconds)"
-                        type="number"
-                        value={intervalSec}
-                        onChange={(e) => setIntervalSec(Number(e.target.value))}
-                        fullWidth
-                        size="small"
-                      />
-                      <Button 
-                        variant="contained" 
-                        color="primary"
-                        onClick={updateConfig}
-                        fullWidth
-                      >
-                        Update Settings
-                      </Button>
-                    </Stack>
-                  ) : (
-                    <Typography color="text.secondary">
-                      Select an event to update its settings
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-        </TabPanel>
-      </Container>
-
-      {msg && (
-        <Paper 
-          elevation={3} 
-          sx={{ 
-            position: 'fixed', 
-            bottom: 16, 
-            right: 16, 
-            p: 2, 
-            minWidth: 300,
-            bgcolor: 'background.paper',
-            borderLeft: '4px solid',
-            borderColor: msg.includes('Error') ? 'error.main' : 'success.main'
-          }}
-        >
-          <Typography variant="body2">{msg}</Typography>
-          <Button 
-            size="small" 
-            onClick={() => setMsg('')}
-            sx={{ mt: 1 }}
-          >
-            Dismiss
-          </Button>
-        </Paper>
-      )}
+      <MainContent>
+        {selectedView === 'dashboard' && renderDashboard()}
+        {selectedView === 'events' && renderEvents()}
+        {selectedView === 'users' && renderUsers()}
+        {selectedView === 'analytics' && renderAnalytics()}
+        {selectedView === 'settings' && (
+          <Box>
+            <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>
+              Settings
+            </Typography>
+            <Card sx={{ mt: 3 }}>
+              <CardContent>
+                <Typography>Settings panel coming soon...</Typography>
+              </CardContent>
+            </Card>
+          </Box>
+        )}
+      </MainContent>
     </Box>
   );
 }
