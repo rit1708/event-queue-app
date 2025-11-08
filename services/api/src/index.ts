@@ -128,6 +128,25 @@ router.put('/admin/event/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Admin: delete event
+router.delete('/admin/event/:id', async (req: Request, res: Response) => {
+  try {
+    const db = await getDb();
+    const deleteResult = await db
+      .collection('events')
+      .deleteOne({ _id: new ObjectId(req.params.id) });
+
+    if (deleteResult.deletedCount === 0) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Error deleting event:', error);
+    res.status(400).json({ error: 'Invalid request data' });
+  }
+});
+
 // Admin: advance queue
 router.post('/admin/event/:id/advance', async (req: Request, res: Response) => {
   try {

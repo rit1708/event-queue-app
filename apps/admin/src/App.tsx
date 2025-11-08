@@ -27,6 +27,13 @@ import {
   Stack,
   LinearProgress,
   Divider,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  TextField,
+  Snackbar,
+  Alert,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -41,6 +48,9 @@ import {
   CheckCircle as CheckCircleIcon,
   Schedule as ScheduleIcon,
   Timer as TimerIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import { LineChart, PieChart } from '@mui/x-charts';
 import { styled } from '@mui/material/styles';
@@ -102,6 +112,18 @@ function AdminApp() {
   const [queueData, setQueueData] = useState<QueueData>({ active: [], waiting: [], remaining: 0 });
   const [isLoading, setIsLoading] = useState(false);
   const [history, setHistory] = useState<{ t: number; active: number; waiting: number }[]>([]);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [newEvent, setNewEvent] = useState({
+    name: '',
+    domain: '',
+    queueLimit: 2,
+    intervalSec: 30,
+  });
+  const [editEvent, setEditEvent] = useState<Event | null>(null);
 
   const loadEvents = async () => {
     try {
@@ -196,6 +218,76 @@ function AdminApp() {
   const totalUsers = queueData.active.length + queueData.waiting.length;
   const activeQueues = events.filter(e => e.isActive).length;
   const totalEvents = events.length;
+
+  const handleCreateEvent = async () => {
+    try {
+      const response = await fetch(`${API_URL}/admin/event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEvent),
+      });
+      if (response.ok) {
+        setSnackbar({ open: true, message: 'Event created successfully!', severity: 'success' });
+        setCreateDialogOpen(false);
+        setNewEvent({ name: '', domain: '', queueLimit: 2, intervalSec: 30 });
+        loadEvents();
+      } else {
+        const error = await response.text();
+        setSnackbar({ open: true, message: error || 'Failed to create event', severity: 'error' });
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to create event', severity: 'error' });
+    }
+  };
+
+  const handleUpdateEvent = async () => {
+    if (!editEvent) return;
+    try {
+      const response = await fetch(`${API_URL}/admin/event/${editEvent._id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          queueLimit: editEvent.queueLimit,
+          intervalSec: editEvent.intervalSec,
+        }),
+      });
+      if (response.ok) {
+        setSnackbar({ open: true, message: 'Event updated successfully!', severity: 'success' });
+        setEditDialogOpen(false);
+        setEditEvent(null);
+        loadEvents();
+      } else {
+        const error = await response.text();
+        setSnackbar({ open: true, message: error || 'Failed to update event', severity: 'error' });
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to update event', severity: 'error' });
+    }
+  };
+
+  const handleDeleteEvent = async () => {
+    if (!eventToDelete) return;
+    try {
+      // Note: You may need to add a DELETE endpoint in the API
+      const response = await fetch(`${API_URL}/admin/event/${eventToDelete._id}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setSnackbar({ open: true, message: 'Event deleted successfully!', severity: 'success' });
+        setDeleteDialogOpen(false);
+        setEventToDelete(null);
+        if (selectedEvent?._id === eventToDelete._id) {
+          setSelectedEvent(null);
+        }
+        loadEvents();
+      } else {
+        const error = await response.text();
+        setSnackbar({ open: true, message: error || 'Failed to delete event', severity: 'error' });
+      }
+    } catch (error) {
+      setSnackbar({ open: true, message: 'Failed to delete event', severity: 'error' });
+    }
+  };
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
@@ -335,13 +427,13 @@ function AdminApp() {
                       data: history.map(h => h.active), 
                       label: 'Active Users', 
                       color: '#10b981',
-                      curve: 'monotone',
+                      curve: 'monotoneX',
                     },
                     { 
                       data: history.map(h => h.waiting), 
                       label: 'Waiting Users', 
                       color: '#f59e0b',
-                      curve: 'monotone',
+                      curve: 'monotoneX',
                     },
                   ]}
                   xAxis={[{ 
@@ -381,16 +473,73 @@ function AdminApp() {
         </Grid>
       </Grid>
 
-      {/* Recent Events Table */}
+      {/* Events Management Section */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Events Management
+            </Typography>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={() => setCreateDialogOpen(true)}
+                size="small"
+              >
+                Create Event
+              </Button>
+              <IconButton onClick={loadEvents} size="small">
+              <RefreshIcon />
+            </IconButton>
+            </Stack>
+          </Box>
+          {selectedEvent && (
+            <Box sx={{ mb: 2, p: 2, bgcolor: alpha('#1e40af', 0.05), borderRadius: 2 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Box>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                    {selectedEvent.name}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {selectedEvent.domain}
+                  </Typography>
+                </Box>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    variant="contained"
+                    color="success"
+                    startIcon={<StartIcon />}
+                    onClick={startQueue}
+                    disabled={isLoading || selectedEvent.isActive}
+                    size="small"
+                  >
+                    Start
+                  </Button>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={<StopIcon />}
+                    onClick={stopQueue}
+                    disabled={isLoading || !selectedEvent.isActive}
+                    size="small"
+                  >
+                    Stop
+                  </Button>
+                </Stack>
+              </Box>
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Events Table */}
       <Card>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Recent Events
+              All Events
             </Typography>
-            <IconButton onClick={loadEvents}>
-              <RefreshIcon />
-            </IconButton>
           </Box>
           <TableContainer>
             <Table>
@@ -405,8 +554,16 @@ function AdminApp() {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {events.slice(0, 5).map((event) => (
-                  <TableRow key={event._id} hover>
+                {events.map((event) => (
+                  <TableRow 
+                    key={event._id} 
+                    hover
+                    onClick={() => setSelectedEvent(event)}
+                    sx={{ 
+                      cursor: 'pointer',
+                      bgcolor: selectedEvent?._id === event._id ? alpha('#1e40af', 0.05) : 'inherit'
+                    }}
+                  >
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
                         {event.name}
@@ -423,16 +580,28 @@ function AdminApp() {
                     </TableCell>
                     <TableCell>{event.queueLimit}</TableCell>
                     <TableCell>{event.intervalSec}s</TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Stack direction="row" spacing={0.5}>
                       <IconButton
                         size="small"
                         onClick={() => {
-                          setSelectedEvent(event);
-                          setSelectedView('events');
+                            setEditEvent(event);
+                            setEditDialogOpen(true);
                         }}
                       >
-                        <TrendingUpIcon fontSize="small" />
+                          <EditIcon fontSize="small" />
                       </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setEventToDelete(event);
+                            setDeleteDialogOpen(true);
+                          }}
+                          color="error"
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -657,8 +826,8 @@ function AdminApp() {
                   width={900}
                   height={400}
                   series={[
-                    { data: history.map(h => h.active), label: 'Active', color: '#10b981', curve: 'monotone' },
-                    { data: history.map(h => h.waiting), label: 'Waiting', color: '#f59e0b', curve: 'monotone' },
+                    { data: history.map(h => h.active), label: 'Active', color: '#10b981', curve: 'monotoneX' },
+                    { data: history.map(h => h.waiting), label: 'Waiting', color: '#f59e0b', curve: 'monotoneX' },
                   ]}
                   xAxis={[{ scaleType: 'point', data: history.map((_, i) => i.toString()) }]}
                   grid={{ vertical: true, horizontal: true }}
@@ -738,6 +907,121 @@ function AdminApp() {
           </Box>
         )}
       </MainContent>
+
+      {/* Create Event Dialog */}
+      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Create New Event</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Event Name"
+              fullWidth
+              value={newEvent.name}
+              onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
+            />
+            <TextField
+              label="Domain"
+              fullWidth
+              value={newEvent.domain}
+              onChange={(e) => setNewEvent({ ...newEvent, domain: e.target.value })}
+              placeholder="e.g., demo.com"
+            />
+            <TextField
+              label="Queue Limit"
+              type="number"
+              fullWidth
+              value={newEvent.queueLimit}
+              onChange={(e) => setNewEvent({ ...newEvent, queueLimit: parseInt(e.target.value) || 2 })}
+            />
+            <TextField
+              label="Interval (seconds)"
+              type="number"
+              fullWidth
+              value={newEvent.intervalSec}
+              onChange={(e) => setNewEvent({ ...newEvent, intervalSec: parseInt(e.target.value) || 30 })}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleCreateEvent} variant="contained" disabled={!newEvent.name || !newEvent.domain}>
+            Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Event Dialog */}
+      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Event</DialogTitle>
+        <DialogContent>
+          {editEvent && (
+            <Stack spacing={2} sx={{ mt: 1 }}>
+              <TextField
+                label="Event Name"
+                fullWidth
+                value={editEvent.name}
+                disabled
+                helperText="Event name cannot be changed"
+              />
+              <TextField
+                label="Domain"
+                fullWidth
+                value={editEvent.domain}
+                disabled
+                helperText="Domain cannot be changed"
+              />
+              <TextField
+                label="Queue Limit"
+                type="number"
+                fullWidth
+                value={editEvent.queueLimit}
+                onChange={(e) => setEditEvent({ ...editEvent, queueLimit: parseInt(e.target.value) || 2 })}
+              />
+              <TextField
+                label="Interval (seconds)"
+                type="number"
+                fullWidth
+                value={editEvent.intervalSec}
+                onChange={(e) => setEditEvent({ ...editEvent, intervalSec: parseInt(e.target.value) || 30 })}
+              />
+            </Stack>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleUpdateEvent} variant="contained">
+            Update
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Event Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+        <DialogTitle>Delete Event</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete the event "{eventToDelete?.name}"? This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button onClick={handleDeleteEvent} variant="contained" color="error">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Snackbar for notifications */}
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={6000}
+        onClose={() => setSnackbar({ ...snackbar, open: false })}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 }
