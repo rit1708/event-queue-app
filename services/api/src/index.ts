@@ -39,8 +39,12 @@ const router = express.Router();
 app.use('/api', router);
 
 // Simple scheduler to auto-advance active events
+let redisBackoffUntil = 0;
+let redisLogGuard = 0;
 async function schedulerTick() {
   try {
+    const now = Date.now();
+    if (now < redisBackoffUntil) return;
     const db = await getDb();
     const events = await db
       .collection('events')
@@ -50,6 +54,16 @@ async function schedulerTick() {
     if (events.length === 0) return;
 
     const redis = await getRedis();
+    try {
+      await redis.ping();
+    } catch (e) {
+      if (now - redisLogGuard > 10000) {
+        redisLogGuard = now;
+        console.error('schedulerTick error:', e);
+      }
+      redisBackoffUntil = now + 10000;
+      return;
+    }
     for (const e of events as any[]) {
       const eventId = String(e._id);
       await ensureEventKeys(redis, eventId);

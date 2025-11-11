@@ -1,12 +1,35 @@
-import Redis from 'ioredis';
+import Redis, { RedisOptions } from 'ioredis';
 import { getDb } from './mongo';
 
 let redisClient: Redis | null = null;
+let redisErrorLogged = false;
 
 export async function getRedis(): Promise<Redis> {
   if (redisClient) return redisClient;
-  const url = process.env.REDIS_URL || 'redis://localhost:6379';
-  redisClient = new Redis(url);
+  const url = process.env.REDIS_URL || 'redis://127.0.0.1:6379';
+
+  const options: RedisOptions = {
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 1,
+    enableReadyCheck: false,
+    connectTimeout: 1000,
+    retryStrategy(times) {
+      if (times >= 3) return null;
+      return Math.min(200 * times, 1000);
+    },
+    reconnectOnError: () => false,
+    lazyConnect: false,
+  };
+
+  redisClient = new Redis(url, options);
+
+  redisClient.on('error', (err: any) => {
+    if (!redisErrorLogged) {
+      redisErrorLogged = true;
+      console.error('[redis] connection error:', err?.message || err);
+    }
+  });
+
   return redisClient;
 }
 
