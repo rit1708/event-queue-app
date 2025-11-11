@@ -12,7 +12,7 @@ services:
     build: ./services/api
     environment:
       - PORT=4000
-      - MONGO_URI=mongodb://mongo:27017/queueapp
+      - MONGO_URL=mongodb://mongo:27017/queueapp
       - REDIS_URL=redis://redis:6379
       - CORS_ORIGIN=*
     depends_on:

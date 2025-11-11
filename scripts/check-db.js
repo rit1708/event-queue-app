@@ -1,7 +1,7 @@
 const { MongoClient } = require('mongodb');
 
 async function checkDatabase() {
-  const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/queueapp';
+  const uri = process.env.MONGO_URL || 'mongodb://localhost:27017/queueapp';
   const client = new MongoClient(uri);
 
   try {
@@ -9,7 +9,7 @@ async function checkDatabase() {
     console.log('Connected to MongoDB');
 
     const db = client.db();
-    
+
     // Check events collection
     const events = await db.collection('events').find({}).toArray();
     console.log('Events in database:', events);
@@ -23,7 +23,7 @@ async function checkDatabase() {
         queueLimit: 10,
         intervalSec: 30,
         isActive: true,
-        createdAt: new Date()
+        createdAt: new Date(),
       });
       console.log('Created sample event with ID:', result.insertedId);
     }

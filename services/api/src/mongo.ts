@@ -8,7 +8,7 @@ export async function getDb(): Promise<Db> {
 
   const uri = process.env.MONGO_URL;
   if (!uri) {
-    throw new Error('❌ Missing MONGO_URI in environment variables');
+    throw new Error('❌ Missing MONGO_URL in environment variables');
   }
 
   try {
