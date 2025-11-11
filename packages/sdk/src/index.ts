@@ -1,8 +1,10 @@
 export type InitOptions = { baseUrl: string };
-let BASE = '';
+let BASE = '/api';
 
 export function init(opts: InitOptions) {
-  BASE = opts.baseUrl.replace(/\/$/, '');
+  if (opts.baseUrl) {
+    BASE = opts.baseUrl.replace(/\/$/, '');
+  }
 }
 
 export async function joinQueue(eventId: string, userId: string) {
