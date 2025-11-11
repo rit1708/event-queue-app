@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { z } from 'zod';
@@ -79,6 +80,8 @@ setInterval(schedulerTick, 1000);
 
 // Health check
 router.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
+// Root health for platform probes
+app.get('/', (_req: Request, res: Response) => res.json({ ok: true }));
 
 // Admin: create domain
 router.post('/admin/domain', async (req: Request, res: Response) => {
@@ -450,8 +453,18 @@ app.get('/admin/event/entries', async (req: Request, res: Response) => {
 });
 
 const PORT = Number(process.env.PORT || 4000);
-app.listen(PORT, async () => {
-  await getDb();
-  await getRedis();
-  console.log(`API listening on :${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  (async () => {
+    try {
+      await getDb();
+    } catch (e) {
+      console.error('DB init failed (continuing to listen):', e);
+    }
+    try {
+      await getRedis();
+    } catch (e) {
+      console.error('Redis init failed (continuing to listen):', e);
+    }
+    console.log(`API listening on :${PORT}`);
+  })();
 });
