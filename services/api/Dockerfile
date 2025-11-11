@@ -3,14 +3,14 @@ FROM node:20-alpine
 WORKDIR /app
 
 # Copy only the backend package files
-COPY backend/package.json backend/package-lock.json* ./
+COPY services/api/package.json services/api/package-lock.json* ./
 
 # Install dependencies
 RUN npm ci --no-audit --no-fund || npm install
 
 # Copy backend configuration and source files
-COPY backend/tsconfig.json ./
-COPY backend/src ./src
+COPY services/api/tsconfig.json ./
+COPY services/api/src ./src
 
 # Expose your app port
 EXPOSE 4000
