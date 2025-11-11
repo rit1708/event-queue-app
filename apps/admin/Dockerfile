@@ -5,4 +5,4 @@ RUN npm ci --no-audit --no-fund || npm install
 COPY tsconfig.json tsconfig.base.json vite.config.ts index.html ./
 COPY src ./src
 EXPOSE 5173
-CMD ["npm", "run", "dev"]
+CMD ["npx", "ts-node-dev", "--respawn", "--transpile-only", "src/index.ts"]
