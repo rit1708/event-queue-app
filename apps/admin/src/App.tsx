@@ -57,6 +57,40 @@ import { styled } from '@mui/material/styles';
 
 const API_URL = 'http://localhost:4000/api';
 
+// Helper function to handle API responses with improved error handling
+async function handleApiResponse<T>(response: Response): Promise<T> {
+  const contentType = response.headers.get('content-type');
+  const isJson = contentType?.includes('application/json');
+
+  if (!response.ok) {
+    let errorMessage = 'Request failed';
+    
+    if (isJson) {
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error || errorData.message || errorMessage;
+      } catch {
+        errorMessage = await response.text() || errorMessage;
+      }
+    } else {
+      errorMessage = await response.text() || errorMessage;
+    }
+    
+    throw new Error(errorMessage);
+  }
+
+  if (isJson) {
+    const data = await response.json();
+    // Backend returns data directly for most endpoints
+    if (data && typeof data === 'object' && 'data' in data && 'success' in data) {
+      return data.data as T;
+    }
+    return data as T;
+  }
+
+  return response.text() as unknown as T;
+}
+
 const drawerWidth = 260;
 
 const SidebarDrawer = styled(Drawer)(({ theme }) => ({
@@ -127,24 +161,27 @@ function AdminApp() {
 
   const loadEvents = async () => {
     try {
-      const response = await fetch(`${API_URL}/events`);
-      if (response.ok) {
-        const data = await response.json();
-        setEvents(data);
-        if (data.length > 0 && !selectedEvent) {
-          setSelectedEvent(data[0]);
-        }
+      const data = await handleApiResponse<Event[]>(await fetch(`${API_URL}/events`));
+      setEvents(data);
+      if (data.length > 0 && !selectedEvent) {
+        setSelectedEvent(data[0]);
       }
     } catch (error) {
       console.error('Error loading events:', error);
+      setSnackbar({ 
+        open: true, 
+        message: error instanceof Error ? error.message : 'Failed to load events', 
+        severity: 'error' 
+      });
     }
   };
 
   const loadQueueData = async (eventId: string) => {
     if (!eventId) return;
     try {
-      const response = await fetch(`${API_URL}/admin/event/users?eventId=${eventId}`);
-      const data = await response.json();
+      const data = await handleApiResponse<QueueData>(
+        await fetch(`${API_URL}/admin/event/users?eventId=${eventId}`)
+      );
       setQueueData({
         active: data.active || [],
         waiting: data.waiting || [],
@@ -183,15 +220,23 @@ function AdminApp() {
     if (!selectedEvent) return;
     setIsLoading(true);
     try {
-      await fetch(`${API_URL}/admin/event/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: selectedEvent._id }),
-      });
+      await handleApiResponse(
+        await fetch(`${API_URL}/admin/event/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: selectedEvent._id }),
+        })
+      );
+      setSnackbar({ open: true, message: 'Queue started successfully', severity: 'success' });
       loadEvents();
       loadQueueData(selectedEvent._id);
     } catch (error) {
       console.error('Error starting queue:', error);
+      setSnackbar({ 
+        open: true, 
+        message: error instanceof Error ? error.message : 'Failed to start queue', 
+        severity: 'error' 
+      });
     } finally {
       setIsLoading(false);
     }
@@ -201,15 +246,23 @@ function AdminApp() {
     if (!selectedEvent) return;
     setIsLoading(true);
     try {
-      await fetch(`${API_URL}/admin/event/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: selectedEvent._id }),
-      });
+      await handleApiResponse(
+        await fetch(`${API_URL}/admin/event/stop`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ eventId: selectedEvent._id }),
+        })
+      );
+      setSnackbar({ open: true, message: 'Queue stopped successfully', severity: 'success' });
       loadEvents();
       loadQueueData(selectedEvent._id);
     } catch (error) {
       console.error('Error stopping queue:', error);
+      setSnackbar({ 
+        open: true, 
+        message: error instanceof Error ? error.message : 'Failed to stop queue', 
+        severity: 'error' 
+      });
     } finally {
       setIsLoading(false);
     }
@@ -221,71 +274,73 @@ function AdminApp() {
 
   const handleCreateEvent = async () => {
     try {
-      const response = await fetch(`${API_URL}/admin/event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEvent),
-      });
-      if (response.ok) {
-        setSnackbar({ open: true, message: 'Event created successfully!', severity: 'success' });
-        setCreateDialogOpen(false);
-        setNewEvent({ name: '', domain: '', queueLimit: 2, intervalSec: 30 });
-        loadEvents();
-      } else {
-        const error = await response.text();
-        setSnackbar({ open: true, message: error || 'Failed to create event', severity: 'error' });
-      }
+      await handleApiResponse(
+        await fetch(`${API_URL}/admin/event`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newEvent),
+        })
+      );
+      setSnackbar({ open: true, message: 'Event created successfully!', severity: 'success' });
+      setCreateDialogOpen(false);
+      setNewEvent({ name: '', domain: '', queueLimit: 2, intervalSec: 30 });
+      loadEvents();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to create event', severity: 'error' });
+      setSnackbar({ 
+        open: true, 
+        message: error instanceof Error ? error.message : 'Failed to create event', 
+        severity: 'error' 
+      });
     }
   };
 
   const handleUpdateEvent = async () => {
     if (!editEvent) return;
     try {
-      const response = await fetch(`${API_URL}/admin/event/${editEvent._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          queueLimit: editEvent.queueLimit,
-          intervalSec: editEvent.intervalSec,
-        }),
-      });
-      if (response.ok) {
-        setSnackbar({ open: true, message: 'Event updated successfully!', severity: 'success' });
-        setEditDialogOpen(false);
-        setEditEvent(null);
-        loadEvents();
-      } else {
-        const error = await response.text();
-        setSnackbar({ open: true, message: error || 'Failed to update event', severity: 'error' });
-      }
+      await handleApiResponse(
+        await fetch(`${API_URL}/admin/event/${editEvent._id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            queueLimit: editEvent.queueLimit,
+            intervalSec: editEvent.intervalSec,
+          }),
+        })
+      );
+      setSnackbar({ open: true, message: 'Event updated successfully!', severity: 'success' });
+      setEditDialogOpen(false);
+      setEditEvent(null);
+      loadEvents();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to update event', severity: 'error' });
+      setSnackbar({ 
+        open: true, 
+        message: error instanceof Error ? error.message : 'Failed to update event', 
+        severity: 'error' 
+      });
     }
   };
 
   const handleDeleteEvent = async () => {
     if (!eventToDelete) return;
     try {
-      // Note: You may need to add a DELETE endpoint in the API
-      const response = await fetch(`${API_URL}/admin/event/${eventToDelete._id}`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        setSnackbar({ open: true, message: 'Event deleted successfully!', severity: 'success' });
-        setDeleteDialogOpen(false);
-        setEventToDelete(null);
-        if (selectedEvent?._id === eventToDelete._id) {
-          setSelectedEvent(null);
-        }
-        loadEvents();
-      } else {
-        const error = await response.text();
-        setSnackbar({ open: true, message: error || 'Failed to delete event', severity: 'error' });
+      await handleApiResponse(
+        await fetch(`${API_URL}/admin/event/${eventToDelete._id}`, {
+          method: 'DELETE',
+        })
+      );
+      setSnackbar({ open: true, message: 'Event deleted successfully!', severity: 'success' });
+      setDeleteDialogOpen(false);
+      setEventToDelete(null);
+      if (selectedEvent?._id === eventToDelete._id) {
+        setSelectedEvent(null);
       }
+      loadEvents();
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to delete event', severity: 'error' });
+      setSnackbar({ 
+        open: true, 
+        message: error instanceof Error ? error.message : 'Failed to delete event', 
+        severity: 'error' 
+      });
     }
   };
 

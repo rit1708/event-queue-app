@@ -75,9 +75,22 @@ export default function AdminPanel() {
     isActive: false
   });
 
-  useEffect(() => {
-    fetchEvents();
-  }, []);
+  // useEffect(() => {
+  //   // Initialize SDK with API URL
+  //   // Use relative URL in development (uses Vite proxy) or absolute URL from env
+  //   const getApiUrl = () => {
+  //     const envUrl = 'http://localhost:4000/api';
+  //     if (envUrl) return envUrl;
+  //     // In development, use relative URL to leverage Vite proxy
+  //     if (import.meta.env.DEV) {
+  //       return '/api';
+  //     }
+  //     // Production fallback
+  //     return 'http://localhost:4000/api';
+  //   };
+  //   sdk.init({ baseUrl: getApiUrl() });
+  //   fetchEvents();
+  // }, []);
 
   const fetchEvents = async () => {
     try {

@@ -46,6 +46,18 @@ import {
 } from '@mui/icons-material';
 import { CircularProgress, TextField, styled } from '@mui/material';
 
+// Use relative URL in development (uses Vite proxy) or absolute URL from env
+// const getApiUrl = () => {
+//   const envUrl = import.meta.env.VITE_API_URL;
+//   if (envUrl) return envUrl;
+//   // In development, use relative URL to leverage Vite proxy
+//   if (import.meta.env.DEV) {
+//     return '/api';
+//   }
+//   // Production fallback
+//   return 'http://localhost:4000/api';
+// };
+
 const API_URL = 'http://localhost:4000/api';
 
 interface QueueStatus {
@@ -143,18 +155,58 @@ const QueueStatusCard = styled(Paper)(({ theme }) => ({
   border: `2px solid ${alpha('#6366f1', 0.1)}`,
 }));
 
-// SDK implementation
+// SDK implementation - using improved error handling
 const sdk = {
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  baseUrl: API_URL,
 
   init: (opts: { baseUrl: string }) => {
     sdk.baseUrl = opts.baseUrl.replace(/\/$/, '');
   },
 
+  async handleResponse<T>(response: Response): Promise<T> {
+    const contentType = response.headers.get('content-type');
+    const isJson = contentType?.includes('application/json');
+
+    // Read the response body once
+    let data: any;
+    try {
+      if (isJson) {
+        data = await response.json();
+      } else {
+        data = await response.text();
+      }
+    } catch (error) {
+      throw new Error('Failed to parse response');
+    }
+
+    // Check if response is an error
+    if (!response.ok) {
+      let errorMessage = 'Request failed';
+      
+      if (isJson && data) {
+        errorMessage = data.error || data.message || errorMessage;
+      } else if (typeof data === 'string') {
+        errorMessage = data || errorMessage;
+      }
+      
+      throw new Error(errorMessage);
+    }
+
+    // Handle successful response
+    if (isJson && data) {
+      // Backend returns data directly for most endpoints
+      if (typeof data === 'object' && 'data' in data && 'success' in data) {
+        return data.data as T;
+      }
+      return data as T;
+    }
+
+    return data as unknown as T;
+  },
+
   getEvents: async (): Promise<Event[]> => {
     const response = await fetch(`${sdk.baseUrl}/events`);
-    if (!response.ok) throw new Error('Failed to fetch events');
-    return response.json();
+    return sdk.handleResponse<Event[]>(response);
   },
 
   createDomain: async (name: string): Promise<{ domainId: string; name: string }> => {
@@ -163,11 +215,8 @@ const sdk = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name }),
     });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to create domain');
-    }
-    return response.json();
+    const result = await sdk.handleResponse<{ success: boolean; data?: { domainId: string; name: string } }>(response);
+    return result.data || result as { domainId: string; name: string };
   },
 
   createEvent: async (params: { domain: string; name: string; queueLimit: number; intervalSec: number }) => {
@@ -176,24 +225,16 @@ const sdk = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
     });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to create event');
-    }
-    return response.json();
+    return sdk.handleResponse<any>(response);
   },
 
-  joinQueue: async (eventId: string, userId: string): Promise<{ success: boolean }> => {
+  joinQueue: async (eventId: string, userId: string): Promise<QueueStatus> => {
     const response = await fetch(`${sdk.baseUrl}/queue/join`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ eventId, userId }),
     });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to join queue');
-    }
-    return response.json();
+    return sdk.handleResponse<QueueStatus>(response);
   },
 
   getQueueStatus: async (eventId: string, userId: string): Promise<QueueStatus> => {
@@ -216,14 +257,7 @@ const sdk = {
       
       clearTimeout(timeoutId);
       
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
-      }
-      
-      const data = await response.json().catch(e => {
-        throw new Error('Invalid JSON response from server');
-      });
+      const data = await sdk.handleResponse<QueueStatus>(response);
       
       return {
         state: data.state || 'waiting',
@@ -235,6 +269,7 @@ const sdk = {
       };
     } catch (error) {
       clearTimeout(timeoutId);
+      // Return default status on error instead of throwing
       return {
         state: 'waiting',
         position: 0,
@@ -257,8 +292,8 @@ const sdk = {
         const status = await sdk.getQueueStatus(eventId, userId);
         onUpdate({
           ...status,
-          total: status.position + 10,
-          timeRemaining: status.timeRemaining * 1000,
+          // timeRemaining is already in seconds from backend
+          timeRemaining: status.timeRemaining * 1000, // Convert to ms for display
         });
       } catch (error) {
         console.error('Error polling queue status:', error);
@@ -287,7 +322,6 @@ export default function App() {
   const [pollingCleanup, setPollingCleanup] = useState<() => void>(() => () => {});
   const [userId] = useState('user-' + Math.random().toString(36).slice(2, 10));
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '' });
   const [newDomain, setNewDomain] = useState('demo.com');
   const [newEventName, setNewEventName] = useState('Demo Event');
   const [newQueueLimit, setNewQueueLimit] = useState<number>(2);
@@ -297,6 +331,11 @@ export default function App() {
   const [queueWaitTime, setQueueWaitTime] = useState(30);
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [snackbar, setSnackbar] = useState<{
+    open: boolean;
+    message: string;
+    severity?: 'success' | 'error' | 'warning' | 'info';
+  }>({ open: false, message: '' });
 
   useEffect(() => {
     sdk.init({ baseUrl: API_URL });
@@ -324,13 +363,95 @@ export default function App() {
   };
 
   const startQueueUpdates = (eventId: string) => {
-    return sdk.pollStatus(
-      eventId,
-      userId,
-      (status) => {
+    let previousStatus = queueStatus?.state;
+    let retryCount = 0;
+    const MAX_RETRIES = 5;
+    const BASE_DELAY = 2000; // 2 seconds base delay
+    let isActive = true;
+
+    const poll = async () => {
+      if (!isActive) return;
+      
+      try {
+        const status = await sdk.getQueueStatus(eventId, userId);
+        
+        // Reset retry count on successful request
+        retryCount = 0;
+        
+        // Check if status changed from waiting to active
+        if (previousStatus === 'waiting' && status.state === 'active') {
+          setSnackbar({
+            open: true,
+            message: 'Your turn has come! You are now active in the queue.'
+          });
+          
+          // Play a sound or show a more prominent notification
+          try {
+            const audio = new Audio('/notification.mp3');
+            audio.play().catch(e => console.log('Audio play failed:', e));
+          } catch (e) {
+            console.log('Audio error:', e);
+          }
+        }
+        
+        // Update the previous status for next comparison
+        previousStatus = status.state;
+        
+        // Update the queue status state
         setQueueStatus(status);
+        
+        // Continue polling with normal interval (2 seconds)
+        setTimeout(poll, 2000);
+        
+      } catch (error: any) {
+        console.error('Error polling queue status:', error);
+        
+        // Handle rate limiting
+        if (error.message?.includes('Rate limit exceeded') || error.message?.includes('Too many requests')) {
+          const retryAfter = error.retryAfter || 5; // Default to 5 seconds if no retryAfter provided
+          const delay = Math.min(
+            BASE_DELAY * Math.pow(2, retryCount), // Exponential backoff
+            60000 // Max 1 minute
+          );
+          
+          setSnackbar({
+            open: true,
+            message: `Rate limited. Retrying in ${Math.ceil(delay/1000)} seconds...`,
+            severity: 'warning'
+          });
+          
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            setTimeout(poll, delay);
+          } else {
+            setSnackbar({
+              open: true,
+              message: 'Max retry attempts reached. Please refresh the page to continue.',
+              severity: 'error'
+            });
+          }
+        } else {
+          // For other errors, retry with exponential backoff
+          const delay = Math.min(
+            BASE_DELAY * Math.pow(2, retryCount),
+            30000 // Max 30 seconds for other errors
+          );
+          
+          if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            setTimeout(poll, delay);
+          }
+        }
       }
-    );
+    };
+    
+    // Start polling
+    poll();
+    
+    // Cleanup function
+    return () => {
+      isActive = false;
+    };
   };
 
   useEffect(() => {
@@ -350,9 +471,10 @@ export default function App() {
 
   const joinQueue = async (eventId: string, redirectAfterJoin = true) => {
     try {
-      const result: any = await sdk.joinQueue(eventId, userId);
+      const result: QueueStatus = await sdk.joinQueue(eventId, userId);
       
-      if (result.success) {
+      // Backend now returns QueueStatus directly
+      if (result.state === 'active' || result.state === 'waiting') {
         const stopPolling = startQueueUpdates(eventId);
         setPollingCleanup(() => stopPolling);
         
@@ -362,11 +484,6 @@ export default function App() {
         }
         
         return { success: true };
-      } else if (result.status === 'waiting') {
-        setQueuePosition(result.position);
-        setQueueWaitTime(result.waitTime);
-        setShowQueueFull(true);
-        return { success: false, isQueueFull: true };
       }
       
       return { success: false };
