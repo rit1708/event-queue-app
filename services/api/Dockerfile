@@ -1,22 +1,31 @@
-FROM node:20-alpine
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy only the backend package files
-COPY services/api/package.json services/api/package-lock.json* ./
+# Copy dependency manifests (build context is services/api)
+COPY package.json package-lock.json* ./
 
-# Install dependencies
-RUN npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev
+# Install all deps including dev for building
+RUN npm ci --no-audit --no-fund
 
-# Copy backend configuration and source files
-COPY services/api/tsconfig.json ./
-COPY services/api/src ./src
+# Copy source
+COPY tsconfig.json ./
+COPY src ./src
 
 # Build TypeScript
-RUN npm run build || (npm install -D typescript && npm run build)
+RUN npm run build
 
-# Expose your app port
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+# Install only prod deps
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev --no-audit --no-fund || npm install --omit=dev
+
+# Copy built artifacts
+COPY --from=builder /app/dist ./dist
+
 EXPOSE 4000
 
-# Start the server
 CMD ["node", "dist/index.js"]
