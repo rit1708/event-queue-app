@@ -20,13 +20,4 @@ export default defineConfig({
       }
     }
   },
-  preview: {
-    host: '0.0.0.0',
-    allowedHosts: true,
-    hmr: {
-      host: 'event-queue-app-production.up.railway.app',
-      protocol: 'wss',
-      clientPort: 443,
-    },
-  },
 });

@@ -6,7 +6,12 @@ export default defineConfig({
   server: { 
     host: '0.0.0.0', 
     port: 5174,
-    allowedHosts: ['event-queue-app-production.up.railway.app'],
+    allowedHosts: true,
+    hmr: {
+      host: 'event-queue-app-production.up.railway.app',
+      protocol: 'wss',
+      clientPort: 443,
+    },
     proxy: {
       '/api': {
         target: 'http://localhost:4000',
@@ -14,9 +19,5 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/api/, '')
       }
     }
-  },
-  preview: {
-    host: '0.0.0.0',
-    allowedHosts: ['event-queue-app-production.up.railway.app'],
   },
 });
