@@ -10,6 +10,7 @@ import {
   enqueueUser,
   getStatus,
   ensureEventKeys,
+  isRedisConnected,
 } from './queue';
 
 const app = express();
@@ -42,6 +43,7 @@ app.use('/api', router);
 // Simple scheduler to auto-advance active events
 let redisBackoffUntil = 0;
 let redisLogGuard = 0;
+let redisWarningShown = false;
 async function schedulerTick() {
   try {
     const now = Date.now();
@@ -56,19 +58,40 @@ async function schedulerTick() {
 
     const redis = await getRedis();
     try {
-      await redis.ping();
-    } catch (e) {
-      if (now - redisLogGuard > 10000) {
-        redisLogGuard = now;
-        console.error('schedulerTick error:', e);
+      const connected = await isRedisConnected();
+      if (!connected) {
+        try {
+          await redis.connect();
+          redisWarningShown = false; // Reset warning flag on successful connection
+        } catch (connectErr) {
+          // Connection failed, will retry later
+        }
       }
-      redisBackoffUntil = now + 10000;
+      await redis.ping();
+      redisWarningShown = false; // Reset warning flag on successful ping
+    } catch (e) {
+      // Only show warning once, and provide helpful information
+      if (!redisWarningShown) {
+        redisWarningShown = true;
+        console.warn(
+          '[scheduler] Redis not available. Queue advancement is disabled.\n' +
+          '  To enable queue features, start Redis:\n' +
+          '  - Docker: docker compose up redis\n' +
+          '  - Local: redis-server (or install with: sudo apt install redis-server)'
+        );
+      }
+      redisBackoffUntil = now + 30000; // Increase backoff to 30 seconds to reduce checks
       return;
     }
     for (const e of events as any[]) {
       const eventId = String(e._id);
-      await ensureEventKeys(redis, eventId);
-      await advanceQueue(redis, eventId, e.queueLimit, e.intervalSec);
+      try {
+        await ensureEventKeys(redis, eventId);
+        await advanceQueue(redis, eventId, e.queueLimit, e.intervalSec);
+      } catch (err) {
+        // Skip this event if Redis operations fail
+        console.warn(`[scheduler] Failed to process event ${eventId}:`, err instanceof Error ? err.message : String(err));
+      }
     }
   } catch (err) {
     console.error('schedulerTick error:', err);

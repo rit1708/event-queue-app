@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
 import {
   AppBar,
   Box,
@@ -147,7 +147,7 @@ const QueueStatusCard = styled(Paper)(({ theme }) => ({
 const sdk = {
   baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000',
 
-  init: (opts: { baseUrl: string }) => {
+  init: function (opts: { baseUrl: string }) {
     sdk.baseUrl = opts.baseUrl.replace(/\/$/, '');
   },
 
@@ -271,16 +271,109 @@ const sdk = {
   },
 };
 
+function TabPanel(props: { children?: React.ReactNode; index: number; value: number; }) {
+  const { children, value, index, ...other } = props;
+  return (
+    <div role="tabpanel" hidden={value !== index} id={`client-tabpanel-${index}`} aria-labelledby={`client-tab-${index}`} {...other}>
+      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+    </div>
+  );
+}
+
+const a11yProps = (index: number) => ({ id: `client-tab-${index}`, 'aria-controls': `client-tabpanel-${index}` });
+
+const EventItemCard = memo(function EventItemCard({
+  event,
+  index,
+  onClick,
+}: {
+  event: Event;
+  index: number;
+  onClick: (event: Event) => void;
+}) {
+  return (
+    <Grid item xs={12} sm={6} md={4} key={event._id}>
+      <Fade in timeout={300 + index * 100}>
+        <EventCard>
+          <CardActionArea onClick={() => onClick(event)} sx={{ p: 0 }}>
+            <CardContent sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
+                <Avatar
+                  sx={{
+                    bgcolor: event.isActive ? 'success.main' : 'grey.300',
+                    width: 56,
+                    height: 56,
+                    mr: 2,
+                  }}
+                >
+                  <EventIcon />
+                </Avatar>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h6" component="div" sx={{ fontWeight: 700, mb: 0.5 }}>
+                    {event.name}
+                  </Typography>
+                  <Chip
+                    label={event.domain}
+                    size="small"
+                    sx={{
+                      bgcolor: alpha('#6366f1', 0.1),
+                      color: 'primary.main',
+                      fontWeight: 600,
+                      height: 22,
+                      fontSize: '0.75rem',
+                    }}
+                  />
+                </Box>
+                {event.isActive && (
+                  <Badge
+                    color="success"
+                    variant="dot"
+                    sx={{ '& .MuiBadge-badge': { right: 8, top: 8 } }}
+                  >
+                    <Box />
+                  </Badge>
+                )}
+              </Box>
+
+              <Stack spacing={1.5} sx={{ mt: 2 }}>
+                <StatBox>
+                  <GroupIcon fontSize="small" color="primary" />
+                  <Typography variant="body2" color="text.secondary">
+                    Limit: <strong>{event.queueLimit}</strong> per batch
+                  </Typography>
+                </StatBox>
+                <StatBox>
+                  <TimerIcon fontSize="small" color="primary" />
+                  <Typography variant="body2" color="text.secondary">
+                    Interval: <strong>{event.intervalSec}s</strong>
+                  </Typography>
+                </StatBox>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
+                  <Chip
+                    label={event.isActive ? 'Active' : 'Inactive'}
+                    color={event.isActive ? 'success' : 'default'}
+                    size="small"
+                    sx={{ fontWeight: 600 }}
+                  />
+                  <Button
+                    variant="contained"
+                    size="small"
+                    endIcon={<ArrowForwardIcon />}
+                    sx={{ borderRadius: 2 }}
+                  >
+                    Join
+                  </Button>
+                </Box>
+              </Stack>
+            </CardContent>
+          </CardActionArea>
+        </EventCard>
+      </Fade>
+    </Grid>
+  );
+});
+
 export default function App() {
-  function TabPanel(props: { children?: React.ReactNode; index: number; value: number; }) {
-    const { children, value, index, ...other } = props;
-    return (
-      <div role="tabpanel" hidden={value !== index} id={`client-tabpanel-${index}`} aria-labelledby={`client-tab-${index}`} {...other}>
-        {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-      </div>
-    );
-  }
-  const a11yProps = (index: number) => ({ id: `client-tab-${index}`, 'aria-controls': `client-tabpanel-${index}` });
 
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
@@ -298,20 +391,11 @@ export default function App() {
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    sdk.init({ baseUrl: API_URL });
-    fetchEvents();
+  const showError = useCallback((message: string) => {
+    setSnackbar({ open: true, message });
   }, []);
 
-  useEffect(() => {
-    return () => {
-      if (pollingCleanup) {
-        pollingCleanup();
-      }
-    };
-  }, [pollingCleanup]);
-
-  const fetchEvents = async () => {
+  const fetchEvents = useCallback(async () => {
     try {
       setLoading(true);
       const data = await sdk.getEvents();
@@ -321,9 +405,22 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showError]);
 
-  const startQueueUpdates = (eventId: string) => {
+  useEffect(() => {
+    sdk.init({ baseUrl: API_URL });
+    fetchEvents();
+  }, [fetchEvents]);
+
+  useEffect(() => {
+    return () => {
+      if (pollingCleanup) {
+        pollingCleanup();
+      }
+    };
+  }, [pollingCleanup]);
+
+  const startQueueUpdates = useCallback((eventId: string) => {
     return sdk.pollStatus(
       eventId,
       userId,
@@ -331,7 +428,7 @@ export default function App() {
         setQueueStatus(status);
       }
     );
-  };
+  }, [userId]);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -348,19 +445,19 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [showQueueFull, queueWaitTime]);
 
-  const joinQueue = async (eventId: string, redirectAfterJoin = true) => {
+  const joinQueue = useCallback(async (eventId: string, redirectAfterJoin = true) => {
     try {
       const result: any = await sdk.joinQueue(eventId, userId);
-      
+
       if (result.success) {
         const stopPolling = startQueueUpdates(eventId);
         setPollingCleanup(() => stopPolling);
-        
+
         if (!redirectAfterJoin) {
           const event = events.find(e => e._id === eventId);
           if (event) setSelectedEvent(event);
         }
-        
+
         return { success: true };
       } else if (result.status === 'waiting') {
         setQueuePosition(result.position);
@@ -368,26 +465,34 @@ export default function App() {
         setShowQueueFull(true);
         return { success: false, isQueueFull: true };
       }
-      
+
       return { success: false };
     } catch (error) {
       console.error('Error joining queue:', error);
       showError('Failed to join queue');
       return { success: false, error };
     }
-  };
+  }, [events, showError, startQueueUpdates, userId]);
 
-  const showError = (message: string) => {
-    setSnackbar({ open: true, message });
-  };
-
-  const formatTime = (seconds: number) => {
+  const formatTime = useCallback((seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
+  }, []);
 
-  const activeEvents = events.filter(e => e.isActive).length;
+  const activeEvents = useMemo(() => events.filter(e => e.isActive).length, [events]);
+
+  const handleEventClick = useCallback(async (event: Event) => {
+    try {
+      const result = await joinQueue(event._id, false);
+      if ((result as any).success) {
+        const redirectUrl = `http://${event.domain}?eventId=${event._id}&userId=${userId}`;
+        window.location.href = redirectUrl;
+      }
+    } catch (error) {
+      showError('An error occurred. Please try again.');
+    }
+  }, [joinQueue, showError, userId]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -532,97 +637,7 @@ export default function App() {
           ) : (
             <Grid container spacing={3}>
               {events.map((event, index) => (
-                <Grid item xs={12} sm={6} md={4} key={event._id}>
-                  <Fade in timeout={300 + index * 100}>
-                    <EventCard>
-                      <CardActionArea 
-                        onClick={async () => {
-                          try {
-                            const result = await joinQueue(event._id, false);
-                            if (result.success) {
-                              const redirectUrl = `http://${event.domain}?eventId=${event._id}&userId=${userId}`;
-                              window.location.href = redirectUrl;
-                            }
-                          } catch (error) {
-                            showError('An error occurred. Please try again.');
-                          }
-                        }}
-                        sx={{ p: 0 }}
-                      >
-                        <CardContent sx={{ p: 3 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'flex-start', mb: 2 }}>
-                            <Avatar
-                              sx={{
-                                bgcolor: event.isActive ? 'success.main' : 'grey.300',
-                                width: 56,
-                                height: 56,
-                                mr: 2,
-                              }}
-                            >
-                              <EventIcon />
-                            </Avatar>
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="h6" component="div" sx={{ fontWeight: 700, mb: 0.5 }}>
-                                {event.name}
-                              </Typography>
-                              <Chip
-                                label={event.domain}
-                                size="small"
-                                sx={{
-                                  bgcolor: alpha('#6366f1', 0.1),
-                                  color: 'primary.main',
-                                  fontWeight: 600,
-                                  height: 22,
-                                  fontSize: '0.75rem',
-                                }}
-                              />
-                            </Box>
-                            {event.isActive && (
-                              <Badge
-                                color="success"
-                                variant="dot"
-                                sx={{ '& .MuiBadge-badge': { right: 8, top: 8 } }}
-                              >
-                                <Box />
-                              </Badge>
-                            )}
-                          </Box>
-                          
-                          <Stack spacing={1.5} sx={{ mt: 2 }}>
-                            <StatBox>
-                              <GroupIcon fontSize="small" color="primary" />
-                              <Typography variant="body2" color="text.secondary">
-                                Limit: <strong>{event.queueLimit}</strong> per batch
-                              </Typography>
-                            </StatBox>
-                            <StatBox>
-                              <TimerIcon fontSize="small" color="primary" />
-                              <Typography variant="body2" color="text.secondary">
-                                Interval: <strong>{event.intervalSec}s</strong>
-                              </Typography>
-                            </StatBox>
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
-                              <Chip
-                                label={event.isActive ? 'Active' : 'Inactive'}
-                                color={event.isActive ? 'success' : 'default'}
-                                size="small"
-                                sx={{ fontWeight: 600 }}
-                              />
-                              <Button
-                                variant="contained"
-                                size="small"
-                                endIcon={<ArrowForwardIcon />}
-                                sx={{ borderRadius: 2 }}
-                              >
-                                Join
-                              </Button>
-                            </Box>
-                          </Stack>
-                        </CardContent>
-                      </CardActionArea>
-                    </EventCard>
-                  </Fade>
-                </Grid>
+                <EventItemCard key={event._id} event={event} index={index} onClick={handleEventClick} />
               ))}
             </Grid>
           )}
