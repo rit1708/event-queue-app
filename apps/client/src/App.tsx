@@ -789,7 +789,7 @@ export default function App() {
                           intervalSec: newIntervalSec,
                         });
                         setSnackbar({ open: true, message: 'Event created successfully!' });
-                        fetchEvents();
+                        // fetchEvents();
                         setTabValue(0);
                       } catch (e) {
                         setSnackbar({ open: true, message: (e as Error).message || 'Failed to create event' });
