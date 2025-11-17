@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Box,
   Button,
@@ -140,7 +140,7 @@ function AdminApp() {
     }
   };
 
-  const loadQueueData = async (eventId: string) => {
+  const loadQueueData = useCallback(async (eventId: string) => {
     if (!eventId) return;
     try {
       const response = await fetch(`${API_URL}/admin/event/users?eventId=${eventId}`);
@@ -163,10 +163,11 @@ function AdminApp() {
     } catch (error) {
       console.error('Failed to load queue data:', error);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadEvents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -177,7 +178,7 @@ function AdminApp() {
       }, 2000);
       return () => clearInterval(interval);
     }
-  }, [selectedEvent]);
+  }, [selectedEvent, loadQueueData]);
 
   const startQueue = async () => {
     if (!selectedEvent) return;

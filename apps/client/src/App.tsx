@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState, memo } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, memo, useRef } from 'react';
 import {
   AppBar,
   Box,
@@ -374,11 +374,16 @@ const EventItemCard = memo(function EventItemCard({
 });
 
 export default function App() {
+  // Debug: Track renders
+  const renderCount = useRef(0);
+  renderCount.current += 1;
+  if (renderCount.current <= 5) {
+    console.log(`[Client App] Render #${renderCount.current}`);
+  }
 
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [pollingCleanup, setPollingCleanup] = useState<() => void>(() => () => {});
-  const [userId] = useState('user-' + Math.random().toString(36).slice(2, 10));
+  const [userId] = useState(() => 'user-' + Math.random().toString(36).slice(2, 10));
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
   const [newDomain, setNewDomain] = useState('demo.com');
@@ -391,34 +396,61 @@ export default function App() {
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
+  // Use refs instead of state for cleanup functions to avoid re-renders
+  const pollingCleanupRef = useRef<(() => void) | null>(null);
+  const eventsRef = useRef(events);
+  const selectedEventRef = useRef(selectedEvent);
+  const joinQueueRef = useRef<((eventId: string, redirectAfterJoin?: boolean) => Promise<any>) | null>(null);
+
+  // Update refs synchronously (no useEffect needed)
+  eventsRef.current = events;
+  selectedEventRef.current = selectedEvent;
+
   const showError = useCallback((message: string) => {
     setSnackbar({ open: true, message });
   }, []);
 
-  const fetchEvents = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await sdk.getEvents();
-      setEvents(data);
-    } catch (error) {
-      showError('Failed to fetch events');
-    } finally {
-      setLoading(false);
-    }
-  }, [showError]);
-
-  useEffect(() => {
-    sdk.init({ baseUrl: API_URL });
-    fetchEvents();
-  }, [fetchEvents]);
-
+  // Cleanup polling on unmount
   useEffect(() => {
     return () => {
-      if (pollingCleanup) {
-        pollingCleanup();
+      if (pollingCleanupRef.current) {
+        pollingCleanupRef.current();
+        pollingCleanupRef.current = null;
       }
     };
-  }, [pollingCleanup]);
+  }, []);
+
+  // Initialize SDK and fetch events only once on mount
+  useEffect(() => {
+    console.log('[Client App] Initial mount - fetching events');
+    sdk.init({ baseUrl: API_URL });
+    
+    let isMounted = true;
+    const loadEvents = async () => {
+      try {
+        setLoading(true);
+        const data = await sdk.getEvents();
+        if (isMounted) {
+          setEvents(data);
+        }
+      } catch (error) {
+        if (isMounted) {
+          showError('Failed to fetch events');
+        }
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
+      }
+    };
+    
+    loadEvents();
+    
+    return () => {
+      isMounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const startQueueUpdates = useCallback((eventId: string) => {
     return sdk.pollStatus(
@@ -430,31 +462,21 @@ export default function App() {
     );
   }, [userId]);
 
-  useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (showQueueFull && queueWaitTime > 0) {
-      timer = setTimeout(() => {
-        setQueueWaitTime(prev => prev - 1);
-      }, 1000);
-    } else if (showQueueFull && queueWaitTime <= 0) {
-      setShowQueueFull(false);
-      if (selectedEvent) {
-        joinQueue(selectedEvent._id, false);
-      }
-    }
-    return () => clearTimeout(timer);
-  }, [showQueueFull, queueWaitTime]);
-
   const joinQueue = useCallback(async (eventId: string, redirectAfterJoin = true) => {
     try {
       const result: any = await sdk.joinQueue(eventId, userId);
 
       if (result.success) {
+        // Cleanup previous polling if exists
+        if (pollingCleanupRef.current) {
+          pollingCleanupRef.current();
+        }
+        
         const stopPolling = startQueueUpdates(eventId);
-        setPollingCleanup(() => stopPolling);
+        pollingCleanupRef.current = stopPolling;
 
         if (!redirectAfterJoin) {
-          const event = events.find(e => e._id === eventId);
+          const event = eventsRef.current.find(e => e._id === eventId);
           if (event) setSelectedEvent(event);
         }
 
@@ -472,7 +494,27 @@ export default function App() {
       showError('Failed to join queue');
       return { success: false, error };
     }
-  }, [events, showError, startQueueUpdates, userId]);
+  }, [showError, startQueueUpdates, userId]);
+
+  // Update joinQueue ref synchronously
+  joinQueueRef.current = joinQueue;
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (showQueueFull && queueWaitTime > 0) {
+      timer = setTimeout(() => {
+        setQueueWaitTime(prev => prev - 1);
+      }, 1000);
+    } else if (showQueueFull && queueWaitTime <= 0) {
+      setShowQueueFull(false);
+      if (selectedEventRef.current && joinQueueRef.current) {
+        joinQueueRef.current(selectedEventRef.current._id, false);
+      }
+    }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [showQueueFull, queueWaitTime]);
 
   const formatTime = useCallback((seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -768,7 +810,10 @@ export default function App() {
       <Dialog
         open={!!selectedEvent}
         onClose={() => {
-          if (pollingCleanup) pollingCleanup();
+          if (pollingCleanupRef.current) {
+            pollingCleanupRef.current();
+            pollingCleanupRef.current = null;
+          }
           setSelectedEvent(null);
         }}
         maxWidth="sm"
@@ -799,7 +844,10 @@ export default function App() {
             </Box>
             <IconButton
               onClick={() => {
-                if (pollingCleanup) pollingCleanup();
+                if (pollingCleanupRef.current) {
+                  pollingCleanupRef.current();
+                  pollingCleanupRef.current = null;
+                }
                 setSelectedEvent(null);
               }}
               sx={{ color: 'white' }}
@@ -1061,7 +1109,10 @@ export default function App() {
         <DialogActions sx={{ p: 3, pt: 0 }}>
           <Button 
             onClick={() => {
-              if (pollingCleanup) pollingCleanup();
+              if (pollingCleanupRef.current) {
+                pollingCleanupRef.current();
+                pollingCleanupRef.current = null;
+              }
               setSelectedEvent(null);
             }}
             fullWidth
