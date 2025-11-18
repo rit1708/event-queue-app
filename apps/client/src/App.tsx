@@ -46,7 +46,7 @@ import {
 } from '@mui/icons-material';
 import { CircularProgress, TextField, styled } from '@mui/material';
 
-const API_URL = 'http://localhost:4000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://queue-api-production.up.railway.app/api' || 'http://localhost:4000/api';
 
 interface QueueStatus {
   state: 'waiting' | 'active' | 'completed';
@@ -145,7 +145,7 @@ const QueueStatusCard = styled(Paper)(({ theme }) => ({
 
 // SDK implementation
 const sdk = {
-  baseUrl: import.meta.env.VITE_API_URL || 'http://localhost:3000',
+  baseUrl: import.meta.env.VITE_API_URL || 'https://queue-api-production.up.railway.app/api',
 
   init: function (opts: { baseUrl: string }) {
     sdk.baseUrl = opts.baseUrl.replace(/\/$/, '');

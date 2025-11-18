@@ -55,7 +55,7 @@ import {
 import { LineChart, PieChart } from '@mui/x-charts';
 import { styled } from '@mui/material/styles';
 
-const API_URL = 'http://localhost:4000/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://queue-api-production.up.railway.app/api' || 'http://localhost:4000/api';
 
 const drawerWidth = 260;
 
