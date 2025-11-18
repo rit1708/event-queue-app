@@ -86,20 +86,24 @@ function keys(eventId: string) {
   };
 }
 
-export async function ensureEventKeys(redis: Redis, eventId: string) {
+export async function ensureEventKeys(
+  redis: Redis,
+  eventId: string
+): Promise<boolean> {
   try {
     if (!redisConnected) {
       try {
         await redis.connect();
         redisConnected = true;
       } catch (connectErr) {
-        throw new Error('Redis connection not available');
+        return false;
       }
     }
     await redis.ping();
+    return true;
   } catch (err) {
-    // Redis not available, but don't throw - let the calling code handle it
-    throw new Error('Redis connection not available');
+    // Redis not available, return false instead of throwing
+    return false;
   }
 }
 
