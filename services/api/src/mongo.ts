@@ -6,8 +6,9 @@ let db: Db | null = null;
 export async function getDb(): Promise<Db> {
   if (db) return db;
 
-  const uri = process.env.MONGO_URL || 'mongodb+srv://ritesh_db_user:penB8JnBHMkrvIWz@cluster0.ubjm6lh.mongodb.net/?appName=Cluster0';
-  const dbName = process.env.MONGO_DB || undefined;
+  const uri =
+    process.env.MONGO_URL ||
+    'mongodb+srv://ritesh_db_user:penB8JnBHMkrvIWz@cluster0.ubjm6lh.mongodb.net/?appName=Cluster0';
   if (!uri) {
     throw new Error('❌ Missing MONGO_URL in environment variables');
   }
@@ -15,8 +16,7 @@ export async function getDb(): Promise<Db> {
   try {
     client = new MongoClient(uri);
     await client.connect();
-    db = dbName ? client.db(dbName) : client.db();
-    console.log(`✅ Connected to MongoDB${dbName ? ` (db: ${dbName})` : ''}`);
+    console.log(`✅ Connected to MongoDB`);
     return db;
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error);
