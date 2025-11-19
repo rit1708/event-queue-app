@@ -55,7 +55,11 @@ import {
 import { LineChart, PieChart } from '@mui/x-charts';
 import { styled } from '@mui/material/styles';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://queue-api-production.up.railway.app/api' || 'http://localhost:4000/api';
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://queue-api-production.up.railway.app/api' ||
+  'http://localhost:4000/api';
+// const API_URL = 'http://localhost:4000/api';
 
 const drawerWidth = 260;
 
@@ -109,14 +113,24 @@ function AdminApp() {
   const [selectedView, setSelectedView] = useState('dashboard');
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [queueData, setQueueData] = useState<QueueData>({ active: [], waiting: [], remaining: 0 });
+  const [queueData, setQueueData] = useState<QueueData>({
+    active: [],
+    waiting: [],
+    remaining: 0,
+  });
   const [isLoading, setIsLoading] = useState(false);
-  const [history, setHistory] = useState<{ t: number; active: number; waiting: number }[]>([]);
+  const [history, setHistory] = useState<
+    { t: number; active: number; waiting: number }[]
+  >([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [eventToDelete, setEventToDelete] = useState<Event | null>(null);
-  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' as 'success' | 'error' });
+  const [snackbar, setSnackbar] = useState({
+    open: false,
+    message: '',
+    severity: 'success' as 'success' | 'error',
+  });
   const [newEvent, setNewEvent] = useState({
     name: '',
     domain: '',
@@ -143,21 +157,26 @@ function AdminApp() {
   const loadQueueData = useCallback(async (eventId: string) => {
     if (!eventId) return;
     try {
-      const response = await fetch(`${API_URL}/admin/event/users?eventId=${eventId}`);
+      const response = await fetch(
+        `${API_URL}/admin/event/users?eventId=${eventId}`
+      );
       const data = await response.json();
       setQueueData({
         active: data.active || [],
         waiting: data.waiting || [],
         remaining: data.remaining || 0,
       });
-      
+
       const now = Date.now();
       setHistory((prev) => {
-        const next = [...prev, { 
-          t: now, 
-          active: (data.active || []).length, 
-          waiting: (data.waiting || []).length 
-        }];
+        const next = [
+          ...prev,
+          {
+            t: now,
+            active: (data.active || []).length,
+            waiting: (data.waiting || []).length,
+          },
+        ];
         return next.slice(-30);
       });
     } catch (error) {
@@ -217,7 +236,7 @@ function AdminApp() {
   };
 
   const totalUsers = queueData.active.length + queueData.waiting.length;
-  const activeQueues = events.filter(e => e.isActive).length;
+  const activeQueues = events.filter((e) => e.isActive).length;
   const totalEvents = events.length;
 
   const handleCreateEvent = async () => {
@@ -228,16 +247,28 @@ function AdminApp() {
         body: JSON.stringify(newEvent),
       });
       if (response.ok) {
-        setSnackbar({ open: true, message: 'Event created successfully!', severity: 'success' });
+        setSnackbar({
+          open: true,
+          message: 'Event created successfully!',
+          severity: 'success',
+        });
         setCreateDialogOpen(false);
         setNewEvent({ name: '', domain: '', queueLimit: 2, intervalSec: 30 });
         loadEvents();
       } else {
         const error = await response.text();
-        setSnackbar({ open: true, message: error || 'Failed to create event', severity: 'error' });
+        setSnackbar({
+          open: true,
+          message: error || 'Failed to create event',
+          severity: 'error',
+        });
       }
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to create event', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: 'Failed to create event',
+        severity: 'error',
+      });
     }
   };
 
@@ -253,16 +284,28 @@ function AdminApp() {
         }),
       });
       if (response.ok) {
-        setSnackbar({ open: true, message: 'Event updated successfully!', severity: 'success' });
+        setSnackbar({
+          open: true,
+          message: 'Event updated successfully!',
+          severity: 'success',
+        });
         setEditDialogOpen(false);
         setEditEvent(null);
         loadEvents();
       } else {
         const error = await response.text();
-        setSnackbar({ open: true, message: error || 'Failed to update event', severity: 'error' });
+        setSnackbar({
+          open: true,
+          message: error || 'Failed to update event',
+          severity: 'error',
+        });
       }
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to update event', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: 'Failed to update event',
+        severity: 'error',
+      });
     }
   };
 
@@ -270,11 +313,18 @@ function AdminApp() {
     if (!eventToDelete) return;
     try {
       // Note: You may need to add a DELETE endpoint in the API
-      const response = await fetch(`${API_URL}/admin/event/${eventToDelete._id}`, {
-        method: 'DELETE',
-      });
+      const response = await fetch(
+        `${API_URL}/admin/event/${eventToDelete._id}`,
+        {
+          method: 'DELETE',
+        }
+      );
       if (response.ok) {
-        setSnackbar({ open: true, message: 'Event deleted successfully!', severity: 'success' });
+        setSnackbar({
+          open: true,
+          message: 'Event deleted successfully!',
+          severity: 'success',
+        });
         setDeleteDialogOpen(false);
         setEventToDelete(null);
         if (selectedEvent?._id === eventToDelete._id) {
@@ -283,10 +333,18 @@ function AdminApp() {
         loadEvents();
       } else {
         const error = await response.text();
-        setSnackbar({ open: true, message: error || 'Failed to delete event', severity: 'error' });
+        setSnackbar({
+          open: true,
+          message: error || 'Failed to delete event',
+          severity: 'error',
+        });
       }
     } catch (error) {
-      setSnackbar({ open: true, message: 'Failed to delete event', severity: 'error' });
+      setSnackbar({
+        open: true,
+        message: 'Failed to delete event',
+        severity: 'error',
+      });
     }
   };
 
@@ -300,7 +358,10 @@ function AdminApp() {
 
   const renderDashboard = () => (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}>
+      <Typography
+        variant="h4"
+        sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}
+      >
         Dashboard
       </Typography>
 
@@ -309,23 +370,48 @@ function AdminApp() {
         <Grid item xs={12} sm={6} md={3}>
           <KPICard>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
                     Total Users
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#10b981' }}>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontWeight: 700, color: '#10b981' }}
+                  >
                     {totalUsers}
                   </Typography>
                 </Box>
-                <Avatar sx={{ bgcolor: alpha('#10b981', 0.1), width: 56, height: 56 }}>
+                <Avatar
+                  sx={{ bgcolor: alpha('#10b981', 0.1), width: 56, height: 56 }}
+                >
                   <PeopleIcon sx={{ color: '#10b981', fontSize: 28 }} />
                 </Avatar>
               </Box>
-              <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#10b981' }} />
+              <Box
+                sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}
+              >
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: '#10b981',
+                  }}
+                />
                 <Typography variant="caption" color="text.secondary">
-                  {queueData.active.length} active, {queueData.waiting.length} waiting
+                  {queueData.active.length} active, {queueData.waiting.length}{' '}
+                  waiting
                 </Typography>
               </Box>
             </CardContent>
@@ -335,21 +421,45 @@ function AdminApp() {
         <Grid item xs={12} sm={6} md={3}>
           <KPICard>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
                     Total Events
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#ef4444' }}>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontWeight: 700, color: '#ef4444' }}
+                  >
                     {totalEvents}
                   </Typography>
                 </Box>
-                <Avatar sx={{ bgcolor: alpha('#ef4444', 0.1), width: 56, height: 56 }}>
+                <Avatar
+                  sx={{ bgcolor: alpha('#ef4444', 0.1), width: 56, height: 56 }}
+                >
                   <EventIcon sx={{ color: '#ef4444', fontSize: 28 }} />
                 </Avatar>
               </Box>
-              <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#ef4444' }} />
+              <Box
+                sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}
+              >
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: '#ef4444',
+                  }}
+                />
                 <Typography variant="caption" color="text.secondary">
                   {activeQueues} active queues
                 </Typography>
@@ -361,21 +471,45 @@ function AdminApp() {
         <Grid item xs={12} sm={6} md={3}>
           <KPICard>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
                     Active Queues
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#f59e0b' }}>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontWeight: 700, color: '#f59e0b' }}
+                  >
                     {activeQueues}
                   </Typography>
                 </Box>
-                <Avatar sx={{ bgcolor: alpha('#f59e0b', 0.1), width: 56, height: 56 }}>
+                <Avatar
+                  sx={{ bgcolor: alpha('#f59e0b', 0.1), width: 56, height: 56 }}
+                >
                   <TrendingUpIcon sx={{ color: '#f59e0b', fontSize: 28 }} />
                 </Avatar>
               </Box>
-              <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#f59e0b' }} />
+              <Box
+                sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}
+              >
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: '#f59e0b',
+                  }}
+                />
                 <Typography variant="caption" color="text.secondary">
                   Currently running
                 </Typography>
@@ -387,21 +521,45 @@ function AdminApp() {
         <Grid item xs={12} sm={6} md={3}>
           <KPICard>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
                 <Box>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
                     Queue Capacity
                   </Typography>
-                  <Typography variant="h4" sx={{ fontWeight: 700, color: '#6366f1' }}>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontWeight: 700, color: '#6366f1' }}
+                  >
                     {selectedEvent?.queueLimit || 0}
                   </Typography>
                 </Box>
-                <Avatar sx={{ bgcolor: alpha('#6366f1', 0.1), width: 56, height: 56 }}>
+                <Avatar
+                  sx={{ bgcolor: alpha('#6366f1', 0.1), width: 56, height: 56 }}
+                >
                   <TimerIcon sx={{ color: '#6366f1', fontSize: 28 }} />
                 </Avatar>
               </Box>
-              <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#6366f1' }} />
+              <Box
+                sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}
+              >
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: '#6366f1',
+                  }}
+                />
                 <Typography variant="caption" color="text.secondary">
                   Per batch
                 </Typography>
@@ -424,28 +582,39 @@ function AdminApp() {
                   width={700}
                   height={300}
                   series={[
-                    { 
-                      data: history.map(h => h.active), 
-                      label: 'Active Users', 
+                    {
+                      data: history.map((h) => h.active),
+                      label: 'Active Users',
                       color: '#10b981',
                       curve: 'monotoneX',
                     },
-                    { 
-                      data: history.map(h => h.waiting), 
-                      label: 'Waiting Users', 
+                    {
+                      data: history.map((h) => h.waiting),
+                      label: 'Waiting Users',
                       color: '#f59e0b',
                       curve: 'monotoneX',
                     },
                   ]}
-                  xAxis={[{ 
-                    scaleType: 'point', 
-                    data: history.map((_, i) => i.toString()),
-                  }]}
+                  xAxis={[
+                    {
+                      scaleType: 'point',
+                      data: history.map((_, i) => i.toString()),
+                    },
+                  ]}
                   grid={{ vertical: true, horizontal: true }}
                 />
               ) : (
-                <Box sx={{ height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Typography color="text.secondary">No data available</Typography>
+                <Box
+                  sx={{
+                    height: 300,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Typography color="text.secondary">
+                    No data available
+                  </Typography>
                 </Box>
               )}
             </CardContent>
@@ -460,14 +629,26 @@ function AdminApp() {
               </Typography>
               <PieChart
                 height={300}
-                series={[{
-                  data: [
-                    { id: 0, value: queueData.active.length, label: 'Active', color: '#10b981' },
-                    { id: 1, value: queueData.waiting.length, label: 'Waiting', color: '#f59e0b' },
-                  ],
-                  innerRadius: 40,
-                  outerRadius: 100,
-                }]}
+                series={[
+                  {
+                    data: [
+                      {
+                        id: 0,
+                        value: queueData.active.length,
+                        label: 'Active',
+                        color: '#10b981',
+                      },
+                      {
+                        id: 1,
+                        value: queueData.waiting.length,
+                        label: 'Waiting',
+                        color: '#f59e0b',
+                      },
+                    ],
+                    innerRadius: 40,
+                    outerRadius: 100,
+                  },
+                ]}
               />
             </CardContent>
           </Card>
@@ -477,7 +658,14 @@ function AdminApp() {
       {/* Events Management Section */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 2,
+            }}
+          >
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               Events Management
             </Typography>
@@ -491,13 +679,26 @@ function AdminApp() {
                 Create Event
               </Button>
               <IconButton onClick={loadEvents} size="small">
-              <RefreshIcon />
-            </IconButton>
+                <RefreshIcon />
+              </IconButton>
             </Stack>
           </Box>
           {selectedEvent && (
-            <Box sx={{ mb: 2, p: 2, bgcolor: alpha('#1e40af', 0.05), borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Box
+              sx={{
+                mb: 2,
+                p: 2,
+                bgcolor: alpha('#1e40af', 0.05),
+                borderRadius: 2,
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
                 <Box>
                   <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
                     {selectedEvent.name}
@@ -537,7 +738,14 @@ function AdminApp() {
       {/* Events Table */}
       <Card>
         <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 3,
+            }}
+          >
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               All Events
             </Typography>
@@ -556,13 +764,16 @@ function AdminApp() {
               </TableHead>
               <TableBody>
                 {events.map((event) => (
-                  <TableRow 
-                    key={event._id} 
+                  <TableRow
+                    key={event._id}
                     hover
                     onClick={() => setSelectedEvent(event)}
-                    sx={{ 
+                    sx={{
                       cursor: 'pointer',
-                      bgcolor: selectedEvent?._id === event._id ? alpha('#1e40af', 0.05) : 'inherit'
+                      bgcolor:
+                        selectedEvent?._id === event._id
+                          ? alpha('#1e40af', 0.05)
+                          : 'inherit',
                     }}
                   >
                     <TableCell>
@@ -583,15 +794,15 @@ function AdminApp() {
                     <TableCell>{event.intervalSec}s</TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
                       <Stack direction="row" spacing={0.5}>
-                      <IconButton
-                        size="small"
-                        onClick={() => {
+                        <IconButton
+                          size="small"
+                          onClick={() => {
                             setEditEvent(event);
                             setEditDialogOpen(true);
-                        }}
-                      >
+                          }}
+                        >
                           <EditIcon fontSize="small" />
-                      </IconButton>
+                        </IconButton>
                         <IconButton
                           size="small"
                           onClick={() => {
@@ -616,7 +827,14 @@ function AdminApp() {
 
   const renderEvents = () => (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4,
+        }}
+      >
         <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>
           Events Management
         </Typography>
@@ -628,7 +846,14 @@ function AdminApp() {
       {selectedEvent && (
         <Card sx={{ mb: 3 }}>
           <CardContent>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 2,
+              }}
+            >
               <Box>
                 <Typography variant="h6" sx={{ fontWeight: 600 }}>
                   {selectedEvent.name}
@@ -660,15 +885,25 @@ function AdminApp() {
             </Box>
             {queueData.remaining > 0 && (
               <Box sx={{ mt: 2 }}>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    mb: 1,
+                  }}
+                >
                   <Typography variant="body2">Time Remaining</Typography>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {Math.floor(queueData.remaining / 60)}:{(queueData.remaining % 60).toString().padStart(2, '0')}
+                    {Math.floor(queueData.remaining / 60)}:
+                    {(queueData.remaining % 60).toString().padStart(2, '0')}
                   </Typography>
                 </Box>
                 <LinearProgress
                   variant="determinate"
-                  value={(queueData.remaining / (selectedEvent.intervalSec || 30)) * 100}
+                  value={
+                    (queueData.remaining / (selectedEvent.intervalSec || 30)) *
+                    100
+                  }
                   sx={{ height: 8, borderRadius: 4 }}
                 />
               </Box>
@@ -693,11 +928,17 @@ function AdminApp() {
               </TableHead>
               <TableBody>
                 {events.map((event) => (
-                  <TableRow 
-                    key={event._id} 
+                  <TableRow
+                    key={event._id}
                     hover
                     onClick={() => setSelectedEvent(event)}
-                    sx={{ cursor: 'pointer', bgcolor: selectedEvent?._id === event._id ? alpha('#6366f1', 0.05) : 'inherit' }}
+                    sx={{
+                      cursor: 'pointer',
+                      bgcolor:
+                        selectedEvent?._id === event._id
+                          ? alpha('#6366f1', 0.05)
+                          : 'inherit',
+                    }}
                   >
                     <TableCell>
                       <Typography variant="body2" sx={{ fontWeight: 600 }}>
@@ -732,7 +973,10 @@ function AdminApp() {
 
   const renderUsers = () => (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}>
+      <Typography
+        variant="h4"
+        sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}
+      >
         Queue Users
       </Typography>
 
@@ -793,7 +1037,9 @@ function AdminApp() {
                   <TableBody>
                     {queueData.waiting.map((userId, index) => (
                       <TableRow key={userId}>
-                        <TableCell>#{queueData.active.length + index + 1}</TableCell>
+                        <TableCell>
+                          #{queueData.active.length + index + 1}
+                        </TableCell>
                         <TableCell>{userId}</TableCell>
                         <TableCell>
                           <Chip label="Waiting" color="warning" size="small" />
@@ -812,7 +1058,10 @@ function AdminApp() {
 
   const renderAnalytics = () => (
     <Box>
-      <Typography variant="h4" sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}>
+      <Typography
+        variant="h4"
+        sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}
+      >
         Analytics
       </Typography>
       <Grid container spacing={3}>
@@ -827,15 +1076,39 @@ function AdminApp() {
                   width={900}
                   height={400}
                   series={[
-                    { data: history.map(h => h.active), label: 'Active', color: '#10b981', curve: 'monotoneX' },
-                    { data: history.map(h => h.waiting), label: 'Waiting', color: '#f59e0b', curve: 'monotoneX' },
+                    {
+                      data: history.map((h) => h.active),
+                      label: 'Active',
+                      color: '#10b981',
+                      curve: 'monotoneX',
+                    },
+                    {
+                      data: history.map((h) => h.waiting),
+                      label: 'Waiting',
+                      color: '#f59e0b',
+                      curve: 'monotoneX',
+                    },
                   ]}
-                  xAxis={[{ scaleType: 'point', data: history.map((_, i) => i.toString()) }]}
+                  xAxis={[
+                    {
+                      scaleType: 'point',
+                      data: history.map((_, i) => i.toString()),
+                    },
+                  ]}
                   grid={{ vertical: true, horizontal: true }}
                 />
               ) : (
-                <Box sx={{ height: 400, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Typography color="text.secondary">No data available</Typography>
+                <Box
+                  sx={{
+                    height: 400,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Typography color="text.secondary">
+                    No data available
+                  </Typography>
                 </Box>
               )}
             </CardContent>
@@ -877,9 +1150,9 @@ function AdminApp() {
                 <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
                   {item.icon}
                 </ListItemIcon>
-                <ListItemText 
-                  primary={item.label} 
-                  primaryTypographyProps={{ 
+                <ListItemText
+                  primary={item.label}
+                  primaryTypographyProps={{
                     fontWeight: selectedView === item.id ? 600 : 400,
                     color: 'white',
                   }}
@@ -910,7 +1183,12 @@ function AdminApp() {
       </MainContent>
 
       {/* Create Event Dialog */}
-      <Dialog open={createDialogOpen} onClose={() => setCreateDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Create New Event</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -918,13 +1196,17 @@ function AdminApp() {
               label="Event Name"
               fullWidth
               value={newEvent.name}
-              onChange={(e) => setNewEvent({ ...newEvent, name: e.target.value })}
+              onChange={(e) =>
+                setNewEvent({ ...newEvent, name: e.target.value })
+              }
             />
             <TextField
               label="Domain"
               fullWidth
               value={newEvent.domain}
-              onChange={(e) => setNewEvent({ ...newEvent, domain: e.target.value })}
+              onChange={(e) =>
+                setNewEvent({ ...newEvent, domain: e.target.value })
+              }
               placeholder="e.g., demo.com"
             />
             <TextField
@@ -932,27 +1214,46 @@ function AdminApp() {
               type="number"
               fullWidth
               value={newEvent.queueLimit}
-              onChange={(e) => setNewEvent({ ...newEvent, queueLimit: parseInt(e.target.value) || 2 })}
+              onChange={(e) =>
+                setNewEvent({
+                  ...newEvent,
+                  queueLimit: parseInt(e.target.value) || 2,
+                })
+              }
             />
             <TextField
               label="Interval (seconds)"
               type="number"
               fullWidth
               value={newEvent.intervalSec}
-              onChange={(e) => setNewEvent({ ...newEvent, intervalSec: parseInt(e.target.value) || 30 })}
+              onChange={(e) =>
+                setNewEvent({
+                  ...newEvent,
+                  intervalSec: parseInt(e.target.value) || 30,
+                })
+              }
             />
           </Stack>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreateEvent} variant="contained" disabled={!newEvent.name || !newEvent.domain}>
+          <Button
+            onClick={handleCreateEvent}
+            variant="contained"
+            disabled={!newEvent.name || !newEvent.domain}
+          >
             Create
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Edit Event Dialog */}
-      <Dialog open={editDialogOpen} onClose={() => setEditDialogOpen(false)} maxWidth="sm" fullWidth>
+      <Dialog
+        open={editDialogOpen}
+        onClose={() => setEditDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>Edit Event</DialogTitle>
         <DialogContent>
           {editEvent && (
@@ -976,14 +1277,24 @@ function AdminApp() {
                 type="number"
                 fullWidth
                 value={editEvent.queueLimit}
-                onChange={(e) => setEditEvent({ ...editEvent, queueLimit: parseInt(e.target.value) || 2 })}
+                onChange={(e) =>
+                  setEditEvent({
+                    ...editEvent,
+                    queueLimit: parseInt(e.target.value) || 2,
+                  })
+                }
               />
               <TextField
                 label="Interval (seconds)"
                 type="number"
                 fullWidth
                 value={editEvent.intervalSec}
-                onChange={(e) => setEditEvent({ ...editEvent, intervalSec: parseInt(e.target.value) || 30 })}
+                onChange={(e) =>
+                  setEditEvent({
+                    ...editEvent,
+                    intervalSec: parseInt(e.target.value) || 30,
+                  })
+                }
               />
             </Stack>
           )}
@@ -997,11 +1308,15 @@ function AdminApp() {
       </Dialog>
 
       {/* Delete Event Dialog */}
-      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
         <DialogTitle>Delete Event</DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to delete the event "{eventToDelete?.name}"? This action cannot be undone.
+            Are you sure you want to delete the event "{eventToDelete?.name}"?
+            This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -1019,7 +1334,11 @@ function AdminApp() {
         onClose={() => setSnackbar({ ...snackbar, open: false })}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert onClose={() => setSnackbar({ ...snackbar, open: false })} severity={snackbar.severity} sx={{ width: '100%' }}>
+        <Alert
+          onClose={() => setSnackbar({ ...snackbar, open: false })}
+          severity={snackbar.severity}
+          sx={{ width: '100%' }}
+        >
           {snackbar.message}
         </Alert>
       </Snackbar>

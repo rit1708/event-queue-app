@@ -1,4 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState, memo, useRef } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  memo,
+  useRef,
+} from 'react';
 import {
   AppBar,
   Box,
@@ -28,9 +35,9 @@ import {
   Paper,
   Stack,
 } from '@mui/material';
-import { 
-  Event as EventIcon, 
-  People as PeopleIcon, 
+import {
+  Event as EventIcon,
+  People as PeopleIcon,
   Timer as TimerIcon,
   HourglassEmpty as HourglassEmptyIcon,
   CheckCircle as CheckCircleIcon,
@@ -46,7 +53,10 @@ import {
 } from '@mui/icons-material';
 import { CircularProgress, TextField, styled } from '@mui/material';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://queue-api-production.up.railway.app/api' || 'http://localhost:4000/api';
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  'https://queue-api-production.up.railway.app/api' ||
+  'http://localhost:4000/api';
 
 interface QueueStatus {
   state: 'waiting' | 'active' | 'completed';
@@ -143,9 +153,13 @@ const QueueStatusCard = styled(Paper)(({ theme }) => ({
   border: `2px solid ${alpha('#6366f1', 0.1)}`,
 }));
 
+console.log('>>');
+
 // SDK implementation
 const sdk = {
-  baseUrl: import.meta.env.VITE_API_URL || 'https://queue-api-production.up.railway.app/api',
+  baseUrl:
+    import.meta.env.VITE_API_URL ||
+    'https://queue-api-production.up.railway.app/api',
 
   init: function (opts: { baseUrl: string }) {
     sdk.baseUrl = opts.baseUrl.replace(/\/$/, '');
@@ -157,7 +171,9 @@ const sdk = {
     return response.json();
   },
 
-  createDomain: async (name: string): Promise<{ domainId: string; name: string }> => {
+  createDomain: async (
+    name: string
+  ): Promise<{ domainId: string; name: string }> => {
     const response = await fetch(`${sdk.baseUrl}/admin/domain`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -170,7 +186,12 @@ const sdk = {
     return response.json();
   },
 
-  createEvent: async (params: { domain: string; name: string; queueLimit: number; intervalSec: number }) => {
+  createEvent: async (params: {
+    domain: string;
+    name: string;
+    queueLimit: number;
+    intervalSec: number;
+  }) => {
     const response = await fetch(`${sdk.baseUrl}/admin/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -183,7 +204,10 @@ const sdk = {
     return response.json();
   },
 
-  joinQueue: async (eventId: string, userId: string): Promise<{ success: boolean }> => {
+  joinQueue: async (
+    eventId: string,
+    userId: string
+  ): Promise<{ success: boolean }> => {
     const response = await fetch(`${sdk.baseUrl}/queue/join`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -196,35 +220,40 @@ const sdk = {
     return response.json();
   },
 
-  getQueueStatus: async (eventId: string, userId: string): Promise<QueueStatus> => {
+  getQueueStatus: async (
+    eventId: string,
+    userId: string
+  ): Promise<QueueStatus> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000);
-    
+
     try {
       const response = await fetch(
         `${sdk.baseUrl}/queue/status?eventId=${eventId}&userId=${userId}`,
         {
           method: 'GET',
           headers: {
-            'Accept': 'application/json',
+            Accept: 'application/json',
             'Content-Type': 'application/json',
           },
           credentials: 'same-origin',
           signal: controller.signal,
         }
       );
-      
+
       clearTimeout(timeoutId);
-      
+
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+        throw new Error(
+          `HTTP error! status: ${response.status}, message: ${errorText}`
+        );
       }
-      
-      const data = await response.json().catch(e => {
+
+      const data = await response.json().catch((e) => {
         throw new Error('Invalid JSON response from server');
       });
-      
+
       return {
         state: data.state || 'waiting',
         position: data.position || 0,
@@ -271,16 +300,29 @@ const sdk = {
   },
 };
 
-function TabPanel(props: { children?: React.ReactNode; index: number; value: number; }) {
+function TabPanel(props: {
+  children?: React.ReactNode;
+  index: number;
+  value: number;
+}) {
   const { children, value, index, ...other } = props;
   return (
-    <div role="tabpanel" hidden={value !== index} id={`client-tabpanel-${index}`} aria-labelledby={`client-tab-${index}`} {...other}>
+    <div
+      role="tabpanel"
+      hidden={value !== index}
+      id={`client-tabpanel-${index}`}
+      aria-labelledby={`client-tab-${index}`}
+      {...other}
+    >
       {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
     </div>
   );
 }
 
-const a11yProps = (index: number) => ({ id: `client-tab-${index}`, 'aria-controls': `client-tabpanel-${index}` });
+const a11yProps = (index: number) => ({
+  id: `client-tab-${index}`,
+  'aria-controls': `client-tabpanel-${index}`,
+});
 
 const EventItemCard = memo(function EventItemCard({
   event,
@@ -309,7 +351,11 @@ const EventItemCard = memo(function EventItemCard({
                   <EventIcon />
                 </Avatar>
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="h6" component="div" sx={{ fontWeight: 700, mb: 0.5 }}>
+                  <Typography
+                    variant="h6"
+                    component="div"
+                    sx={{ fontWeight: 700, mb: 0.5 }}
+                  >
                     {event.name}
                   </Typography>
                   <Chip
@@ -348,7 +394,14 @@ const EventItemCard = memo(function EventItemCard({
                     Interval: <strong>{event.intervalSec}s</strong>
                   </Typography>
                 </StatBox>
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    mt: 2,
+                  }}
+                >
                   <Chip
                     label={event.isActive ? 'Active' : 'Inactive'}
                     color={event.isActive ? 'success' : 'default'}
@@ -383,7 +436,9 @@ export default function App() {
 
   const [events, setEvents] = useState<Event[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
-  const [userId] = useState(() => 'user-' + Math.random().toString(36).slice(2, 10));
+  const [userId] = useState(
+    () => 'user-' + Math.random().toString(36).slice(2, 10)
+  );
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
   const [newDomain, setNewDomain] = useState('demo.com');
@@ -400,7 +455,9 @@ export default function App() {
   const pollingCleanupRef = useRef<(() => void) | null>(null);
   const eventsRef = useRef(events);
   const selectedEventRef = useRef(selectedEvent);
-  const joinQueueRef = useRef<((eventId: string, redirectAfterJoin?: boolean) => Promise<any>) | null>(null);
+  const joinQueueRef = useRef<
+    ((eventId: string, redirectAfterJoin?: boolean) => Promise<any>) | null
+  >(null);
 
   // Update refs synchronously (no useEffect needed)
   eventsRef.current = events;
@@ -424,7 +481,7 @@ export default function App() {
   useEffect(() => {
     console.log('[Client App] Initial mount - fetching events');
     sdk.init({ baseUrl: API_URL });
-    
+
     let isMounted = true;
     const loadEvents = async () => {
       try {
@@ -443,58 +500,60 @@ export default function App() {
         }
       }
     };
-    
+
     loadEvents();
-    
+
     return () => {
       isMounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const startQueueUpdates = useCallback((eventId: string) => {
-    return sdk.pollStatus(
-      eventId,
-      userId,
-      (status) => {
+  const startQueueUpdates = useCallback(
+    (eventId: string) => {
+      return sdk.pollStatus(eventId, userId, (status) => {
         setQueueStatus(status);
-      }
-    );
-  }, [userId]);
+      });
+    },
+    [userId]
+  );
 
-  const joinQueue = useCallback(async (eventId: string, redirectAfterJoin = true) => {
-    try {
-      const result: any = await sdk.joinQueue(eventId, userId);
+  const joinQueue = useCallback(
+    async (eventId: string, redirectAfterJoin = true) => {
+      try {
+        const result: any = await sdk.joinQueue(eventId, userId);
 
-      if (result.success) {
-        // Cleanup previous polling if exists
-        if (pollingCleanupRef.current) {
-          pollingCleanupRef.current();
+        if (result.success) {
+          // Cleanup previous polling if exists
+          if (pollingCleanupRef.current) {
+            pollingCleanupRef.current();
+          }
+
+          const stopPolling = startQueueUpdates(eventId);
+          pollingCleanupRef.current = stopPolling;
+
+          if (!redirectAfterJoin) {
+            const event = eventsRef.current.find((e) => e._id === eventId);
+            if (event) setSelectedEvent(event);
+          }
+
+          return { success: true };
+        } else if (result.status === 'waiting') {
+          setQueuePosition(result.position);
+          setQueueWaitTime(result.waitTime);
+          setShowQueueFull(true);
+          return { success: false, isQueueFull: true };
         }
-        
-        const stopPolling = startQueueUpdates(eventId);
-        pollingCleanupRef.current = stopPolling;
 
-        if (!redirectAfterJoin) {
-          const event = eventsRef.current.find(e => e._id === eventId);
-          if (event) setSelectedEvent(event);
-        }
-
-        return { success: true };
-      } else if (result.status === 'waiting') {
-        setQueuePosition(result.position);
-        setQueueWaitTime(result.waitTime);
-        setShowQueueFull(true);
-        return { success: false, isQueueFull: true };
+        return { success: false };
+      } catch (error) {
+        console.error('Error joining queue:', error);
+        showError('Failed to join queue');
+        return { success: false, error };
       }
-
-      return { success: false };
-    } catch (error) {
-      console.error('Error joining queue:', error);
-      showError('Failed to join queue');
-      return { success: false, error };
-    }
-  }, [showError, startQueueUpdates, userId]);
+    },
+    [showError, startQueueUpdates, userId]
+  );
 
   // Update joinQueue ref synchronously
   joinQueueRef.current = joinQueue;
@@ -503,7 +562,7 @@ export default function App() {
     let timer: NodeJS.Timeout;
     if (showQueueFull && queueWaitTime > 0) {
       timer = setTimeout(() => {
-        setQueueWaitTime(prev => prev - 1);
+        setQueueWaitTime((prev) => prev - 1);
       }, 1000);
     } else if (showQueueFull && queueWaitTime <= 0) {
       setShowQueueFull(false);
@@ -522,24 +581,37 @@ export default function App() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   }, []);
 
-  const activeEvents = useMemo(() => events.filter(e => e.isActive).length, [events]);
+  const activeEvents = useMemo(
+    () => events.filter((e) => e.isActive).length,
+    [events]
+  );
 
-  const handleEventClick = useCallback(async (event: Event) => {
-    try {
-      const result = await joinQueue(event._id, false);
-      if ((result as any).success) {
-        const redirectUrl = `http://${event.domain}?eventId=${event._id}&userId=${userId}`;
-        window.location.href = redirectUrl;
+  const handleEventClick = useCallback(
+    async (event: Event) => {
+      try {
+        const result = await joinQueue(event._id, false);
+        if ((result as any).success) {
+          const redirectUrl = `http://${event.domain}?eventId=${event._id}&userId=${userId}`;
+          window.location.href = redirectUrl;
+        }
+      } catch (error) {
+        showError('An error occurred. Please try again.');
       }
-    } catch (error) {
-      showError('An error occurred. Please try again.');
-    }
-  }, [joinQueue, showError, userId]);
+    },
+    [joinQueue, showError, userId]
+  );
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', bgcolor: 'background.default' }}>
-      <AppBar 
-        position="sticky" 
+    <Box
+      sx={{
+        display: 'flex',
+        flexDirection: 'column',
+        minHeight: '100vh',
+        bgcolor: 'background.default',
+      }}
+    >
+      <AppBar
+        position="sticky"
         elevation={0}
         sx={{
           background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
@@ -549,7 +621,11 @@ export default function App() {
       >
         <Toolbar sx={{ py: 1.5 }}>
           <QueueIcon sx={{ mr: 2, fontSize: 32 }} />
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: 0.5 }}>
+          <Typography
+            variant="h6"
+            component="div"
+            sx={{ flexGrow: 1, fontWeight: 700, letterSpacing: 0.5 }}
+          >
             Queue Management System
           </Typography>
           <Chip
@@ -570,11 +646,22 @@ export default function App() {
         <HeroCard sx={{ mb: 5, position: 'relative', zIndex: 1 }}>
           <Grid container spacing={3} alignItems="center">
             <Grid item xs={12} md={8}>
-              <Typography variant="h3" sx={{ fontWeight: 700, mb: 2, fontSize: { xs: '2rem', md: '2.5rem' } }}>
+              <Typography
+                variant="h3"
+                sx={{
+                  fontWeight: 700,
+                  mb: 2,
+                  fontSize: { xs: '2rem', md: '2.5rem' },
+                }}
+              >
                 Join Events & Manage Queues
               </Typography>
-              <Typography variant="h6" sx={{ mb: 3, opacity: 0.9, fontWeight: 400 }}>
-                Get in line for your favorite events. Real-time updates and seamless queue management.
+              <Typography
+                variant="h6"
+                sx={{ mb: 3, opacity: 0.9, fontWeight: 400 }}
+              >
+                Get in line for your favorite events. Real-time updates and
+                seamless queue management.
               </Typography>
               <Stack direction="row" spacing={2} flexWrap="wrap">
                 <StatBox>
@@ -612,7 +699,12 @@ export default function App() {
                 </StatBox>
               </Stack>
             </Grid>
-            <Grid item xs={12} md={4} sx={{ textAlign: { xs: 'center', md: 'right' } }}>
+            <Grid
+              item
+              xs={12}
+              md={4}
+              sx={{ textAlign: { xs: 'center', md: 'right' } }}
+            >
               <Avatar
                 sx={{
                   width: 120,
@@ -632,10 +724,10 @@ export default function App() {
           value={tabValue}
           onChange={(_, v) => setTabValue(v)}
           aria-label="client tabs"
-          sx={{ 
+          sx={{
             mb: 4,
-            '& .MuiTab-root': { 
-              textTransform: 'none', 
+            '& .MuiTab-root': {
+              textTransform: 'none',
               fontWeight: 600,
               fontSize: '1rem',
               minHeight: 56,
@@ -648,27 +740,44 @@ export default function App() {
           variant="fullWidth"
           indicatorColor="primary"
         >
-          <Tab label="Browse Events" icon={<EventIcon />} iconPosition="start" {...a11yProps(0)} />
-          <Tab label="Create Event" icon={<TrendingUpIcon />} iconPosition="start" {...a11yProps(1)} />
+          <Tab
+            label="Browse Events"
+            icon={<EventIcon />}
+            iconPosition="start"
+            {...a11yProps(0)}
+          />
+          <Tab
+            label="Create Event"
+            icon={<TrendingUpIcon />}
+            iconPosition="start"
+            {...a11yProps(1)}
+          />
         </Tabs>
 
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700, mb: 1 }}>
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{ fontWeight: 700, mb: 1 }}
+            >
               Available Events
             </Typography>
             <Typography variant="body1" color="text.secondary">
               Select an event to join the queue and get real-time updates
             </Typography>
           </Box>
-          
+
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
               <CircularProgress size={60} />
             </Box>
           ) : events.length === 0 ? (
             <Card sx={{ p: 6, textAlign: 'center' }}>
-              <EventIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+              <EventIcon
+                sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }}
+              />
               <Typography variant="h6" color="text.secondary" gutterBottom>
                 No events available
               </Typography>
@@ -679,7 +788,12 @@ export default function App() {
           ) : (
             <Grid container spacing={3}>
               {events.map((event, index) => (
-                <EventItemCard key={event._id} event={event} index={index} onClick={handleEventClick} />
+                <EventItemCard
+                  key={event._id}
+                  event={event}
+                  index={index}
+                  onClick={handleEventClick}
+                />
               ))}
             </Grid>
           )}
@@ -687,14 +801,19 @@ export default function App() {
 
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ mb: 4 }}>
-            <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700, mb: 1 }}>
+            <Typography
+              variant="h4"
+              component="h1"
+              gutterBottom
+              sx={{ fontWeight: 700, mb: 1 }}
+            >
               Create New Event
             </Typography>
             <Typography variant="body1" color="text.secondary">
               Set up a new event and configure queue settings
             </Typography>
           </Box>
-          
+
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
               <Card sx={{ p: 3, height: '100%' }}>
@@ -722,10 +841,19 @@ export default function App() {
                     fullWidth
                     onClick={async () => {
                       try {
-                        await sdk.createDomain(newDomain.replace(/^https?:\/\//, '').split('/')[0]);
-                        setSnackbar({ open: true, message: 'Domain created successfully!' });
+                        await sdk.createDomain(
+                          newDomain.replace(/^https?:\/\//, '').split('/')[0]
+                        );
+                        setSnackbar({
+                          open: true,
+                          message: 'Domain created successfully!',
+                        });
                       } catch (e) {
-                        setSnackbar({ open: true, message: (e as Error).message || 'Failed to create domain' });
+                        setSnackbar({
+                          open: true,
+                          message:
+                            (e as Error).message || 'Failed to create domain',
+                        });
                       }
                     }}
                     sx={{ mt: 1, py: 1.5 }}
@@ -735,7 +863,7 @@ export default function App() {
                 </Stack>
               </Card>
             </Grid>
-            
+
             <Grid item xs={12} md={6}>
               <Card sx={{ p: 3, height: '100%' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
@@ -770,7 +898,9 @@ export default function App() {
                       type="number"
                       size="medium"
                       value={newIntervalSec}
-                      onChange={(e) => setNewIntervalSec(Number(e.target.value))}
+                      onChange={(e) =>
+                        setNewIntervalSec(Number(e.target.value))
+                      }
                       sx={{ flex: 1 }}
                       variant="outlined"
                     />
@@ -783,16 +913,25 @@ export default function App() {
                     onClick={async () => {
                       try {
                         await sdk.createEvent({
-                          domain: newDomain.replace(/^https?:\/\//, '').split('/')[0],
+                          domain: newDomain
+                            .replace(/^https?:\/\//, '')
+                            .split('/')[0],
                           name: newEventName,
                           queueLimit: newQueueLimit,
                           intervalSec: newIntervalSec,
                         });
-                        setSnackbar({ open: true, message: 'Event created successfully!' });
+                        setSnackbar({
+                          open: true,
+                          message: 'Event created successfully!',
+                        });
                         // fetchEvents();
                         setTabValue(0);
                       } catch (e) {
-                        setSnackbar({ open: true, message: (e as Error).message || 'Failed to create event' });
+                        setSnackbar({
+                          open: true,
+                          message:
+                            (e as Error).message || 'Failed to create event',
+                        });
                       }
                     }}
                     sx={{ mt: 1, py: 1.5 }}
@@ -825,15 +964,24 @@ export default function App() {
           },
         }}
       >
-        <DialogTitle sx={{ 
-          background: queueStatus?.state === 'active' 
-            ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
-            : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-          color: 'white',
-          pb: 3,
-          pt: 4,
-        }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <DialogTitle
+          sx={{
+            background:
+              queueStatus?.state === 'active'
+                ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+                : 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+            color: 'white',
+            pb: 3,
+            pt: 4,
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
+          >
             <Box>
               <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>
                 {selectedEvent?.name}
@@ -863,39 +1011,46 @@ export default function App() {
                 <Zoom in>
                   <Box>
                     {/* Position Number Display */}
-                    <Box sx={{ 
-                      position: 'relative',
-                      mb: 4,
-                    }}>
-                      <Box sx={{ 
-                        width: 160, 
-                        height: 160, 
-                        borderRadius: '50%', 
-                        background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        mx: 'auto',
-                        boxShadow: '0 16px 32px rgba(99, 102, 241, 0.4)',
+                    <Box
+                      sx={{
                         position: 'relative',
-                        '&::before': {
-                          content: '""',
-                          position: 'absolute',
-                          inset: -4,
+                        mb: 4,
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          width: 160,
+                          height: 160,
                           borderRadius: '50%',
-                          padding: 4,
-                          background: 'linear-gradient(135deg, #6366f1, #ec4899)',
-                          WebkitMask: 'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
-                          WebkitMaskComposite: 'xor',
-                          maskComposite: 'exclude',
-                          opacity: 0.3,
-                        },
-                      }}>
-                        <Typography 
-                          variant="h1" 
-                          sx={{ 
-                            color: 'white', 
-                            fontWeight: 800, 
+                          background:
+                            'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          mx: 'auto',
+                          boxShadow: '0 16px 32px rgba(99, 102, 241, 0.4)',
+                          position: 'relative',
+                          '&::before': {
+                            content: '""',
+                            position: 'absolute',
+                            inset: -4,
+                            borderRadius: '50%',
+                            padding: 4,
+                            background:
+                              'linear-gradient(135deg, #6366f1, #ec4899)',
+                            WebkitMask:
+                              'linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0)',
+                            WebkitMaskComposite: 'xor',
+                            maskComposite: 'exclude',
+                            opacity: 0.3,
+                          },
+                        }}
+                      >
+                        <Typography
+                          variant="h1"
+                          sx={{
+                            color: 'white',
+                            fontWeight: 800,
                             fontSize: { xs: '3.5rem', sm: '4.5rem' },
                             lineHeight: 1,
                           }}
@@ -903,71 +1058,114 @@ export default function App() {
                           {queueStatus.position}
                         </Typography>
                       </Box>
-                      <Box sx={{
-                        position: 'absolute',
-                        top: -10,
-                        right: '50%',
-                        transform: 'translateX(50%)',
-                        bgcolor: 'primary.main',
-                        color: 'white',
-                        px: 2,
-                        py: 0.5,
-                        borderRadius: 2,
-                        fontSize: '0.75rem',
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        letterSpacing: 1,
-                      }}>
+                      <Box
+                        sx={{
+                          position: 'absolute',
+                          top: -10,
+                          right: '50%',
+                          transform: 'translateX(50%)',
+                          bgcolor: 'primary.main',
+                          color: 'white',
+                          px: 2,
+                          py: 0.5,
+                          borderRadius: 2,
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          letterSpacing: 1,
+                        }}
+                      >
                         Position
                       </Box>
                     </Box>
 
                     {/* Status Info */}
                     <Box sx={{ mb: 4 }}>
-                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: 'text.primary' }}>
+                      <Typography
+                        variant="h6"
+                        sx={{ fontWeight: 600, mb: 1, color: 'text.primary' }}
+                      >
                         You're in the queue
                       </Typography>
-                      <Typography variant="body1" color="text.secondary" sx={{ mb: 0.5 }}>
-                        {queueStatus.total > 0 ? `${queueStatus.total} people ahead of you` : 'Almost there!'}
+                      <Typography
+                        variant="body1"
+                        color="text.secondary"
+                        sx={{ mb: 0.5 }}
+                      >
+                        {queueStatus.total > 0
+                          ? `${queueStatus.total} people ahead of you`
+                          : 'Almost there!'}
                       </Typography>
                       {queueStatus.position > 0 && (
-                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontStyle: 'italic' }}
+                        >
                           Please wait, we'll notify you when it's your turn
                         </Typography>
                       )}
                     </Box>
 
                     {/* Wait Time Card */}
-                    <Box sx={{ 
-                      background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%)',
-                      borderRadius: 4,
-                      p: 4,
-                      mb: 3,
-                      border: `2px solid ${alpha('#6366f1', 0.2)}`,
-                      position: 'relative',
-                      overflow: 'hidden',
-                      '&::before': {
-                        content: '""',
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        height: 3,
-                        background: 'linear-gradient(90deg, #6366f1, #ec4899)',
-                      },
-                    }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 2 }}>
-                        <AccessTimeIcon sx={{ fontSize: 48, color: 'primary.main', mr: 1 }} />
+                    <Box
+                      sx={{
+                        background:
+                          'linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(236, 72, 153, 0.1) 100%)',
+                        borderRadius: 4,
+                        p: 4,
+                        mb: 3,
+                        border: `2px solid ${alpha('#6366f1', 0.2)}`,
+                        position: 'relative',
+                        overflow: 'hidden',
+                        '&::before': {
+                          content: '""',
+                          position: 'absolute',
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: 3,
+                          background:
+                            'linear-gradient(90deg, #6366f1, #ec4899)',
+                        },
+                      }}
+                    >
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          mb: 2,
+                        }}
+                      >
+                        <AccessTimeIcon
+                          sx={{ fontSize: 48, color: 'primary.main', mr: 1 }}
+                        />
                         <Box>
-                          <Typography variant="h3" sx={{ fontWeight: 700, color: 'primary.main', lineHeight: 1 }}>
+                          <Typography
+                            variant="h3"
+                            sx={{
+                              fontWeight: 700,
+                              color: 'primary.main',
+                              lineHeight: 1,
+                            }}
+                          >
                             {formatTime(queueStatus.timeRemaining / 1000)}
                           </Typography>
                         </Box>
                       </Box>
-                      <Typography variant="body1" color="text.secondary" sx={{ fontWeight: 500 }}>
+                      <Typography
+                        variant="body1"
+                        color="text.secondary"
+                        sx={{ fontWeight: 500 }}
+                      >
                         Estimated wait time
                       </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ display: 'block', mt: 1 }}
+                      >
                         This is an approximate time and may vary
                       </Typography>
                     </Box>
@@ -975,41 +1173,67 @@ export default function App() {
                     {/* Queue Stats */}
                     <Grid container spacing={2} sx={{ mt: 2 }}>
                       <Grid item xs={6}>
-                        <Paper 
+                        <Paper
                           elevation={0}
-                          sx={{ 
-                            p: 2, 
+                          sx={{
+                            p: 2,
                             textAlign: 'center',
                             bgcolor: alpha('#10b981', 0.1),
                             border: `1px solid ${alpha('#10b981', 0.2)}`,
                             borderRadius: 2,
                           }}
                         >
-                          <PeopleIcon sx={{ fontSize: 32, color: 'success.main', mb: 1 }} />
-                          <Typography variant="h5" sx={{ fontWeight: 700, color: 'success.main', mb: 0.5 }}>
+                          <PeopleIcon
+                            sx={{ fontSize: 32, color: 'success.main', mb: 1 }}
+                          />
+                          <Typography
+                            variant="h5"
+                            sx={{
+                              fontWeight: 700,
+                              color: 'success.main',
+                              mb: 0.5,
+                            }}
+                          >
                             {queueStatus.activeUsers}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontWeight: 600 }}
+                          >
                             Active Now
                           </Typography>
                         </Paper>
                       </Grid>
                       <Grid item xs={6}>
-                        <Paper 
+                        <Paper
                           elevation={0}
-                          sx={{ 
-                            p: 2, 
+                          sx={{
+                            p: 2,
                             textAlign: 'center',
                             bgcolor: alpha('#f59e0b', 0.1),
                             border: `1px solid ${alpha('#f59e0b', 0.2)}`,
                             borderRadius: 2,
                           }}
                         >
-                          <HourglassEmptyIcon sx={{ fontSize: 32, color: 'warning.main', mb: 1 }} />
-                          <Typography variant="h5" sx={{ fontWeight: 700, color: 'warning.main', mb: 0.5 }}>
+                          <HourglassEmptyIcon
+                            sx={{ fontSize: 32, color: 'warning.main', mb: 1 }}
+                          />
+                          <Typography
+                            variant="h5"
+                            sx={{
+                              fontWeight: 700,
+                              color: 'warning.main',
+                              mb: 0.5,
+                            }}
+                          >
                             {queueStatus.waitingUsers}
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontWeight: 600 }}
+                          >
                             Waiting
                           </Typography>
                         </Paper>
@@ -1019,24 +1243,50 @@ export default function App() {
                     {/* Progress Indicator */}
                     {queueStatus.total > 0 && (
                       <Box sx={{ mt: 3 }}>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            mb: 1,
+                          }}
+                        >
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontWeight: 600 }}
+                          >
                             Queue Progress
                           </Typography>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-                            {Math.round(((queueStatus.total - queueStatus.position) / queueStatus.total) * 100)}%
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ fontWeight: 600 }}
+                          >
+                            {Math.round(
+                              ((queueStatus.total - queueStatus.position) /
+                                queueStatus.total) *
+                                100
+                            )}
+                            %
                           </Typography>
                         </Box>
                         <LinearProgress
                           variant="determinate"
-                          value={queueStatus.total > 0 ? ((queueStatus.total - queueStatus.position) / queueStatus.total) * 100 : 0}
-                          sx={{ 
-                            height: 8, 
+                          value={
+                            queueStatus.total > 0
+                              ? ((queueStatus.total - queueStatus.position) /
+                                  queueStatus.total) *
+                                100
+                              : 0
+                          }
+                          sx={{
+                            height: 8,
                             borderRadius: 4,
                             bgcolor: alpha('#6366f1', 0.1),
                             '& .MuiLinearProgress-bar': {
                               borderRadius: 4,
-                              background: 'linear-gradient(90deg, #6366f1, #ec4899)',
+                              background:
+                                'linear-gradient(90deg, #6366f1, #ec4899)',
                             },
                           }}
                         />
@@ -1049,37 +1299,53 @@ export default function App() {
               {queueStatus.state === 'active' && (
                 <Zoom in>
                   <Box>
-                    <Box sx={{ 
-                      width: 140, 
-                      height: 140, 
-                      borderRadius: '50%', 
-                      bgcolor: 'success.main',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      mx: 'auto',
-                      mb: 3,
-                      boxShadow: '0 12px 24px rgba(16, 185, 129, 0.3)',
-                    }}>
+                    <Box
+                      sx={{
+                        width: 140,
+                        height: 140,
+                        borderRadius: '50%',
+                        bgcolor: 'success.main',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        mx: 'auto',
+                        mb: 3,
+                        boxShadow: '0 12px 24px rgba(16, 185, 129, 0.3)',
+                      }}
+                    >
                       <CheckCircleIcon sx={{ fontSize: 80, color: 'white' }} />
                     </Box>
-                    <Typography variant="h4" sx={{ fontWeight: 700, mb: 1, color: 'success.main' }}>
+                    <Typography
+                      variant="h4"
+                      sx={{ fontWeight: 700, mb: 1, color: 'success.main' }}
+                    >
                       It's Your Turn!
                     </Typography>
-                    <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-                      You have {formatTime(queueStatus.timeRemaining / 1000)} remaining
+                    <Typography
+                      variant="body1"
+                      color="text.secondary"
+                      sx={{ mb: 4 }}
+                    >
+                      You have {formatTime(queueStatus.timeRemaining / 1000)}{' '}
+                      remaining
                     </Typography>
-                    <Box sx={{ 
-                      bgcolor: alpha('#10b981', 0.1),
-                      borderRadius: 3,
-                      p: 2,
-                      mb: 3,
-                    }}>
+                    <Box
+                      sx={{
+                        bgcolor: alpha('#10b981', 0.1),
+                        borderRadius: 3,
+                        p: 2,
+                        mb: 3,
+                      }}
+                    >
                       <LinearProgress
                         variant="determinate"
-                        value={(queueStatus.timeRemaining / ((selectedEvent?.intervalSec ?? 30) * 1000)) * 100}
-                        sx={{ 
-                          height: 12, 
+                        value={
+                          (queueStatus.timeRemaining /
+                            ((selectedEvent?.intervalSec ?? 30) * 1000)) *
+                          100
+                        }
+                        sx={{
+                          height: 12,
                           borderRadius: 6,
                           bgcolor: alpha('#10b981', 0.1),
                           '& .MuiLinearProgress-bar': {
@@ -1107,7 +1373,7 @@ export default function App() {
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 0 }}>
-          <Button 
+          <Button
             onClick={() => {
               if (pollingCleanupRef.current) {
                 pollingCleanupRef.current();
@@ -1133,8 +1399,8 @@ export default function App() {
         sx={{ '& .MuiSnackbarContent-root': { borderRadius: 2 } }}
       />
 
-      <Dialog 
-        open={showQueueFull} 
+      <Dialog
+        open={showQueueFull}
         onClose={() => setShowQueueFull(false)}
         maxWidth="xs"
         fullWidth
@@ -1159,7 +1425,7 @@ export default function App() {
             <Box sx={{ position: 'relative', display: 'inline-flex', mb: 4 }}>
               <CircularProgress
                 variant="determinate"
-                value={(30 - queueWaitTime) / 30 * 100}
+                value={((30 - queueWaitTime) / 30) * 100}
                 size={100}
                 thickness={4.5}
                 sx={{
@@ -1170,10 +1436,10 @@ export default function App() {
             </Box>
 
             {/* Main Status Message */}
-            <Typography 
-              variant="h6" 
-              sx={{ 
-                fontWeight: 600, 
+            <Typography
+              variant="h6"
+              sx={{
+                fontWeight: 600,
                 mb: 2,
                 color: 'text.primary',
               }}
@@ -1195,7 +1461,7 @@ export default function App() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2.5, gap: 1.5 }}>
-          <Button 
+          <Button
             onClick={() => setShowQueueFull(false)}
             variant="text"
             sx={{
@@ -1207,7 +1473,7 @@ export default function App() {
           >
             Cancel
           </Button>
-          <Button 
+          <Button
             variant="contained"
             onClick={() => {
               setShowQueueFull(false);
