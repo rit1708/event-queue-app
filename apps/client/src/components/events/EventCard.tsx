@@ -26,9 +26,19 @@ interface EventCardProps {
   event: Event;
   index: number;
   onClick: (event: Event) => void;
+  onJoin?: (event: Event) => void;
 }
 
-export const EventCard = memo(function EventCard({ event, index, onClick }: EventCardProps) {
+export const EventCard = memo(function EventCard({ event, index, onClick, onJoin }: EventCardProps) {
+  const handleJoinClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onJoin) {
+      onJoin(event);
+    } else {
+      onClick(event);
+    }
+  };
+
   return (
     <Grid item xs={12} sm={6} md={4} key={event._id}>
       <Fade in timeout={300 + index * 100}>
@@ -105,6 +115,7 @@ export const EventCard = memo(function EventCard({ event, index, onClick }: Even
                     size="small"
                     endIcon={<ArrowForwardIcon />}
                     sx={{ borderRadius: 2 }}
+                    onClick={handleJoinClick}
                   >
                     Join
                   </Button>
