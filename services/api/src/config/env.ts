@@ -1,11 +1,16 @@
 import { z } from 'zod';
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  NODE_ENV: z
+    .enum(['development', 'production', 'test'])
+    .default('development'),
   PORT: z.string().transform(Number).default('4000'),
   MONGO_URL: z.string().optional(),
   MONGO_LOCAL_URL: z.string().optional(),
-  MONGO_TLS_INSECURE: z.string().transform((val) => val === 'true').default('false'),
+  MONGO_TLS_INSECURE: z
+    .string()
+    .transform((val) => val === 'true')
+    .default('false'),
   REDIS_URL: z.string().default('redis://127.0.0.1:6379'),
   CORS_ORIGIN: z.string().default('*'),
   LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
@@ -38,4 +43,3 @@ export function getEnv(): Env {
   }
   return env;
 }
-

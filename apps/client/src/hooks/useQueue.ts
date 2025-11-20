@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import * as sdk from 'queue-sdk';
-import type { QueueStatus } from 'queue-sdk';
+import type { QueueStatus, JoinQueueResponse } from 'queue-sdk';
 import { handleApiError } from '../utils/errorHandler';
 import { logger } from '../utils/logger';
 
@@ -17,18 +17,18 @@ export const useQueue = ({ eventId, userId, enabled = true, pollInterval = 2000 
   const [error, setError] = useState<string | null>(null);
   const pollingCleanupRef = useRef<(() => void) | null>(null);
 
-  const joinQueue = useCallback(async (): Promise<boolean> => {
+  const joinQueue = useCallback(async (): Promise<JoinQueueResponse | null> => {
     try {
       setLoading(true);
       setError(null);
       const result = await sdk.joinQueue(eventId, userId);
       logger.debug('Joined queue', result);
-      return result.success;
+      return result;
     } catch (err) {
       const errorMessage = handleApiError(err);
       setError(errorMessage);
       logger.error('Failed to join queue', err);
-      return false;
+      return null;
     } finally {
       setLoading(false);
     }
