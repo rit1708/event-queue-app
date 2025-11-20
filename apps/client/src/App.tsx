@@ -444,10 +444,11 @@ export default function App() {
   const [newDomain, setNewDomain] = useState('demo.com');
   const [newEventName, setNewEventName] = useState('Demo Event');
   const [newQueueLimit, setNewQueueLimit] = useState<number>(2);
-  const [newIntervalSec, setNewIntervalSec] = useState<number>(30);
+  const [newIntervalSec, setNewIntervalSec] = useState<number>(45);
   const [tabValue, setTabValue] = useState(0);
   const [showQueueFull, setShowQueueFull] = useState(false);
-  const [queueWaitTime, setQueueWaitTime] = useState(30);
+  const [queueWaitTime, setQueueWaitTime] = useState(0);
+  const [queueWaitDuration, setQueueWaitDuration] = useState(0);
   const [queuePosition, setQueuePosition] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -540,7 +541,9 @@ export default function App() {
           return { success: true };
         } else if (result.status === 'waiting') {
           setQueuePosition(result.position);
-          setQueueWaitTime(result.waitTime);
+          const waitTime = Number(result.waitTime) || 0;
+          setQueueWaitDuration(waitTime);
+          setQueueWaitTime(waitTime);
           setShowQueueFull(true);
           return { success: false, isQueueFull: true };
         }
@@ -562,7 +565,7 @@ export default function App() {
     let timer: NodeJS.Timeout;
     if (showQueueFull && queueWaitTime > 0) {
       timer = setTimeout(() => {
-        setQueueWaitTime((prev) => prev - 1);
+        setQueueWaitTime((prev) => Math.max(prev - 1, 0));
       }, 1000);
     } else if (showQueueFull && queueWaitTime <= 0) {
       setShowQueueFull(false);
@@ -585,6 +588,14 @@ export default function App() {
     () => events.filter((e) => e.isActive).length,
     [events]
   );
+
+  const queueWaitProgress = useMemo(() => {
+    if (!queueWaitDuration || queueWaitDuration <= 0) return 0;
+    return (
+      ((queueWaitDuration - queueWaitTime) / queueWaitDuration) *
+      100
+    );
+  }, [queueWaitDuration, queueWaitTime]);
 
   const handleEventClick = useCallback(
     async (event: Event) => {
@@ -1425,7 +1436,7 @@ export default function App() {
             <Box sx={{ position: 'relative', display: 'inline-flex', mb: 4 }}>
               <CircularProgress
                 variant="determinate"
-                value={((30 - queueWaitTime) / 30) * 100}
+                value={Math.min(Math.max(queueWaitProgress, 0), 100)}
                 size={100}
                 thickness={4.5}
                 sx={{

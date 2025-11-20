@@ -40,15 +40,63 @@ const router = express.Router();
 // Mount API router under /api
 app.use('/api', router);
 
+// Error handler middleware for MongoDB connection errors
+const handleDbError = (err: unknown, res: Response) => {
+  if (err instanceof Error) {
+    const errorMessage = err.message.toLowerCase();
+    if (
+      errorMessage.includes('mongoserverselectionerror') ||
+      errorMessage.includes('mongonetworkerror') ||
+      errorMessage.includes('ssl') ||
+      errorMessage.includes('connection')
+    ) {
+      console.error('[API] MongoDB connection error:', err.message);
+      return res.status(503).json({
+        error: 'Database service temporarily unavailable. Please try again later.',
+      });
+    }
+  }
+  throw err; // Re-throw if not a connection error
+};
+
 // Simple scheduler to auto-advance active events
 let redisBackoffUntil = 0;
 let redisLogGuard = 0;
 let redisWarningShown = false;
+let mongoBackoffUntil = 0;
+let mongoWarningShown = false;
 async function schedulerTick() {
   try {
     const now = Date.now();
     if (now < redisBackoffUntil) return;
-    const db = await getDb();
+    
+    // Check MongoDB connection with backoff
+    if (now < mongoBackoffUntil) return;
+    
+    let db;
+    try {
+      db = await getDb();
+    } catch (mongoErr) {
+      // MongoDB connection failed, back off
+      if (!mongoWarningShown) {
+        mongoWarningShown = true;
+        console.warn(
+          '[scheduler] MongoDB connection failed. Scheduler paused.\n' +
+          '  Error: ' + (mongoErr instanceof Error ? mongoErr.message : String(mongoErr)) + '\n' +
+          '  Will retry in 30 seconds...'
+        );
+      }
+      mongoBackoffUntil = now + 30000; // Back off for 30 seconds
+      return;
+    }
+    
+    // Reset warning flag on successful connection
+    if (mongoWarningShown) {
+      mongoWarningShown = false;
+      console.log('[scheduler] MongoDB connection restored');
+    }
+    mongoBackoffUntil = 0; // Reset backoff
+    
     const events = await db
       .collection('events')
       .find({ isActive: true })
@@ -264,8 +312,12 @@ router.get('/events', async (req: Request, res: Response) => {
 
     res.json(formattedEvents);
   } catch (error) {
-    console.error('Error fetching events:', error);
-    res.status(500).json({ error: 'Failed to fetch events' });
+    try {
+      handleDbError(error, res);
+    } catch {
+      console.error('Error fetching events:', error);
+      res.status(500).json({ error: 'Failed to fetch events' });
+    }
   }
 });
 
@@ -303,7 +355,7 @@ router.post('/queue/join', async (req: Request, res: Response) => {
         success: false,
         status: 'waiting',
         message: 'Queue is full. Please wait...',
-        waitTime: 30, // seconds
+        waitTime: event.intervalSec, // seconds (event-specific window)
         position: status.position,
         total: status.total,
         activeUsers: status.activeUsers,
@@ -330,11 +382,15 @@ router.post('/queue/join', async (req: Request, res: Response) => {
       ...updatedStatus,
     });
   } catch (error) {
-    console.error('Error joining queue:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to join queue. Please try again later.',
-    });
+    try {
+      handleDbError(error, res);
+    } catch {
+      console.error('Error joining queue:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to join queue. Please try again later.',
+      });
+    }
   }
 });
 

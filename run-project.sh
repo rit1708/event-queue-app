@@ -67,6 +67,19 @@ check_dependencies() {
     fi
 }
 
+ensure_port_free() {
+    local port="$1"
+    if lsof -iTCP:"$port" -sTCP:LISTEN > /dev/null 2>&1; then
+        local pids
+        pids=$(lsof -ti tcp:"$port")
+        if [ -n "$pids" ]; then
+            print_info "Freeing port $port (processes: $pids)"
+            kill "$pids" > /dev/null 2>&1 || true
+            sleep 1
+        fi
+    fi
+}
+
 # Start with Docker
 start_docker() {
     print_header "Starting Project with Docker"
@@ -99,11 +112,15 @@ start_local() {
     print_header "Starting Project Locally"
     check_node
     check_dependencies
+    ensure_port_free 4000
     
     # Try to start Redis if available
     start_redis_if_available
     
-    print_info "Starting all services locally..."
+    export MONGO_URL="${MONGO_URL:-mongodb://127.0.0.1:27017/queue-app}"
+    export REDIS_URL="${REDIS_URL:-redis://127.0.0.1:6379}"
+    export VITE_API_URL="${VITE_API_URL:-http://localhost:4000/api}"
+    print_info "Starting all services locally (API -> $VITE_API_URL)..."
     
     # Check if concurrently is installed
     if ! npm list concurrently &> /dev/null; then
