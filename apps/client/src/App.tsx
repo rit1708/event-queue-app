@@ -52,29 +52,8 @@ import {
   Group as GroupIcon,
 } from '@mui/icons-material';
 import { CircularProgress, TextField, styled } from '@mui/material';
-
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  'https://queue-api-production.up.railway.app/api' ||
-  'http://localhost:4000/api';
-
-interface QueueStatus {
-  state: 'waiting' | 'active' | 'completed';
-  position: number;
-  total: number;
-  timeRemaining: number;
-  activeUsers: number;
-  waitingUsers: number;
-}
-
-interface Event {
-  _id: string;
-  name: string;
-  domain: string;
-  queueLimit: number;
-  intervalSec: number;
-  isActive: boolean;
-}
+import * as sdk from 'queue-sdk';
+import type { QueueStatus, Event } from 'queue-sdk';
 
 // Enhanced styled components
 const HeroCard = styled(Card)(({ theme }) => ({
@@ -153,152 +132,7 @@ const QueueStatusCard = styled(Paper)(({ theme }) => ({
   border: `2px solid ${alpha('#6366f1', 0.1)}`,
 }));
 
-console.log('>>');
-
-// SDK implementation
-const sdk = {
-  baseUrl:
-    import.meta.env.VITE_API_URL ||
-    'https://queue-api-production.up.railway.app/api',
-
-  init: function (opts: { baseUrl: string }) {
-    sdk.baseUrl = opts.baseUrl.replace(/\/$/, '');
-  },
-
-  getEvents: async (): Promise<Event[]> => {
-    const response = await fetch(`${sdk.baseUrl}/events`);
-    if (!response.ok) throw new Error('Failed to fetch events');
-    return response.json();
-  },
-
-  createDomain: async (
-    name: string
-  ): Promise<{ domainId: string; name: string }> => {
-    const response = await fetch(`${sdk.baseUrl}/admin/domain`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to create domain');
-    }
-    return response.json();
-  },
-
-  createEvent: async (params: {
-    domain: string;
-    name: string;
-    queueLimit: number;
-    intervalSec: number;
-  }) => {
-    const response = await fetch(`${sdk.baseUrl}/admin/event`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(params),
-    });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to create event');
-    }
-    return response.json();
-  },
-
-  joinQueue: async (
-    eventId: string,
-    userId: string
-  ): Promise<{ success: boolean }> => {
-    const response = await fetch(`${sdk.baseUrl}/queue/join`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ eventId, userId }),
-    });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error || 'Failed to join queue');
-    }
-    return response.json();
-  },
-
-  getQueueStatus: async (
-    eventId: string,
-    userId: string
-  ): Promise<QueueStatus> => {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000);
-
-    try {
-      const response = await fetch(
-        `${sdk.baseUrl}/queue/status?eventId=${eventId}&userId=${userId}`,
-        {
-          method: 'GET',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-          },
-          credentials: 'same-origin',
-          signal: controller.signal,
-        }
-      );
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(
-          `HTTP error! status: ${response.status}, message: ${errorText}`
-        );
-      }
-
-      const data = await response.json().catch((e) => {
-        throw new Error('Invalid JSON response from server');
-      });
-
-      return {
-        state: data.state || 'waiting',
-        position: data.position || 0,
-        total: data.total || 0,
-        timeRemaining: data.timeRemaining || 0,
-        activeUsers: data.activeUsers || 0,
-        waitingUsers: data.waitingUsers || 0,
-      };
-    } catch (error) {
-      clearTimeout(timeoutId);
-      return {
-        state: 'waiting',
-        position: 0,
-        total: 0,
-        timeRemaining: 0,
-        activeUsers: 0,
-        waitingUsers: 0,
-      };
-    }
-  },
-
-  pollStatus: (
-    eventId: string,
-    userId: string,
-    onUpdate: (status: QueueStatus) => void,
-    intervalMs: number = 2000
-  ): (() => void) => {
-    const poll = async () => {
-      try {
-        const status = await sdk.getQueueStatus(eventId, userId);
-        onUpdate({
-          ...status,
-          total: status.position + 10,
-          timeRemaining: status.timeRemaining * 1000,
-        });
-      } catch (error) {
-        console.error('Error polling queue status:', error);
-      }
-    };
-
-    poll();
-    const intervalId = setInterval(poll, intervalMs);
-    return () => clearInterval(intervalId);
-  },
-};
+// SDK is now imported from the shared package
 
 function TabPanel(props: {
   children?: React.ReactNode;
@@ -481,7 +315,7 @@ export default function App() {
   // Initialize SDK and fetch events only once on mount
   useEffect(() => {
     console.log('[Client App] Initial mount - fetching events');
-    sdk.init({ baseUrl: API_URL });
+    // SDK will auto-detect API URL from environment or use relative path
 
     let isMounted = true;
     const loadEvents = async () => {
@@ -859,6 +693,9 @@ export default function App() {
                           open: true,
                           message: 'Domain created successfully!',
                         });
+                        // Refresh events after creating domain
+                        const data = await sdk.getEvents();
+                        setEvents(data);
                       } catch (e) {
                         setSnackbar({
                           open: true,
@@ -935,7 +772,9 @@ export default function App() {
                           open: true,
                           message: 'Event created successfully!',
                         });
-                        // fetchEvents();
+                        // Refresh events after creating
+                        const data = await sdk.getEvents();
+                        setEvents(data);
                         setTabValue(0);
                       } catch (e) {
                         setSnackbar({

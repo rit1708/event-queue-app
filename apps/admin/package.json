@@ -16,6 +16,7 @@
     "@mui/icons-material": "^5.15.20",
     "@mui/material": "^5.15.20",
     "@mui/x-charts": "^7.29.1",
+    "queue-sdk": "workspace:*",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

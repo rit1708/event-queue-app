@@ -61,7 +61,7 @@ const serverConfig = {
     '/api': {
       target: 'http://localhost:4000',
       changeOrigin: true,
-      rewrite: (path: string) => path.replace(/^\/api/, ''),
+      // Don't rewrite - keep /api prefix since API routes are mounted under /api
     },
   },
 } as const;

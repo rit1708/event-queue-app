@@ -54,12 +54,8 @@ import {
 } from '@mui/icons-material';
 import { LineChart, PieChart } from '@mui/x-charts';
 import { styled } from '@mui/material/styles';
-
-const API_URL =
-  import.meta.env.VITE_API_URL ||
-  'https://queue-api-production.up.railway.app/api' ||
-  'http://localhost:4000/api';
-// const API_URL = 'http://localhost:4000/api';
+import * as sdk from 'queue-sdk';
+import type { Event } from 'queue-sdk';
 
 const drawerWidth = 260;
 
@@ -93,15 +89,7 @@ const MainContent = styled(Box)(({ theme }) => ({
   padding: theme.spacing(3),
 }));
 
-interface Event {
-  _id: string;
-  name: string;
-  domain: string;
-  queueLimit: number;
-  intervalSec: number;
-  isActive?: boolean;
-  createdAt?: string;
-}
+// Event type is now imported from queue-sdk
 
 interface QueueData {
   active: string[];
@@ -141,13 +129,10 @@ function AdminApp() {
 
   const loadEvents = async () => {
     try {
-      const response = await fetch(`${API_URL}/events`);
-      if (response.ok) {
-        const data = await response.json();
-        setEvents(data);
-        if (data.length > 0 && !selectedEvent) {
-          setSelectedEvent(data[0]);
-        }
+      const data = await sdk.getEvents();
+      setEvents(data);
+      if (data.length > 0 && !selectedEvent) {
+        setSelectedEvent(data[0]);
       }
     } catch (error) {
       console.error('Error loading events:', error);
@@ -157,10 +142,7 @@ function AdminApp() {
   const loadQueueData = useCallback(async (eventId: string) => {
     if (!eventId) return;
     try {
-      const response = await fetch(
-        `${API_URL}/admin/event/users?eventId=${eventId}`
-      );
-      const data = await response.json();
+      const data = await sdk.getQueueUsers(eventId);
       setQueueData({
         active: data.active || [],
         waiting: data.waiting || [],
@@ -185,6 +167,7 @@ function AdminApp() {
   }, []);
 
   useEffect(() => {
+    // SDK will auto-detect API URL from environment or use relative path
     loadEvents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -203,11 +186,7 @@ function AdminApp() {
     if (!selectedEvent) return;
     setIsLoading(true);
     try {
-      await fetch(`${API_URL}/admin/event/start`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: selectedEvent._id }),
-      });
+      await sdk.startQueue(selectedEvent._id);
       loadEvents();
       loadQueueData(selectedEvent._id);
     } catch (error) {
@@ -221,11 +200,7 @@ function AdminApp() {
     if (!selectedEvent) return;
     setIsLoading(true);
     try {
-      await fetch(`${API_URL}/admin/event/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ eventId: selectedEvent._id }),
-      });
+      await sdk.stopQueue(selectedEvent._id);
       loadEvents();
       loadQueueData(selectedEvent._id);
     } catch (error) {
@@ -241,32 +216,24 @@ function AdminApp() {
 
   const handleCreateEvent = async () => {
     try {
-      const response = await fetch(`${API_URL}/admin/event`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEvent),
+      await sdk.createEvent({
+        domain: newEvent.domain,
+        name: newEvent.name,
+        queueLimit: newEvent.queueLimit,
+        intervalSec: newEvent.intervalSec,
       });
-      if (response.ok) {
-        setSnackbar({
-          open: true,
-          message: 'Event created successfully!',
-          severity: 'success',
-        });
-        setCreateDialogOpen(false);
-        setNewEvent({ name: '', domain: '', queueLimit: 2, intervalSec: 30 });
-        loadEvents();
-      } else {
-        const error = await response.text();
-        setSnackbar({
-          open: true,
-          message: error || 'Failed to create event',
-          severity: 'error',
-        });
-      }
+      setSnackbar({
+        open: true,
+        message: 'Event created successfully!',
+        severity: 'success',
+      });
+      setCreateDialogOpen(false);
+      setNewEvent({ name: '', domain: '', queueLimit: 2, intervalSec: 30 });
+      loadEvents();
     } catch (error) {
       setSnackbar({
         open: true,
-        message: 'Failed to create event',
+        message: (error as Error).message || 'Failed to create event',
         severity: 'error',
       });
     }
@@ -275,35 +242,22 @@ function AdminApp() {
   const handleUpdateEvent = async () => {
     if (!editEvent) return;
     try {
-      const response = await fetch(`${API_URL}/admin/event/${editEvent._id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          queueLimit: editEvent.queueLimit,
-          intervalSec: editEvent.intervalSec,
-        }),
+      await sdk.updateEvent(editEvent._id, {
+        queueLimit: editEvent.queueLimit,
+        intervalSec: editEvent.intervalSec,
       });
-      if (response.ok) {
-        setSnackbar({
-          open: true,
-          message: 'Event updated successfully!',
-          severity: 'success',
-        });
-        setEditDialogOpen(false);
-        setEditEvent(null);
-        loadEvents();
-      } else {
-        const error = await response.text();
-        setSnackbar({
-          open: true,
-          message: error || 'Failed to update event',
-          severity: 'error',
-        });
-      }
+      setSnackbar({
+        open: true,
+        message: 'Event updated successfully!',
+        severity: 'success',
+      });
+      setEditDialogOpen(false);
+      setEditEvent(null);
+      loadEvents();
     } catch (error) {
       setSnackbar({
         open: true,
-        message: 'Failed to update event',
+        message: (error as Error).message || 'Failed to update event',
         severity: 'error',
       });
     }
@@ -312,37 +266,22 @@ function AdminApp() {
   const handleDeleteEvent = async () => {
     if (!eventToDelete) return;
     try {
-      // Note: You may need to add a DELETE endpoint in the API
-      const response = await fetch(
-        `${API_URL}/admin/event/${eventToDelete._id}`,
-        {
-          method: 'DELETE',
-        }
-      );
-      if (response.ok) {
-        setSnackbar({
-          open: true,
-          message: 'Event deleted successfully!',
-          severity: 'success',
-        });
-        setDeleteDialogOpen(false);
-        setEventToDelete(null);
-        if (selectedEvent?._id === eventToDelete._id) {
-          setSelectedEvent(null);
-        }
-        loadEvents();
-      } else {
-        const error = await response.text();
-        setSnackbar({
-          open: true,
-          message: error || 'Failed to delete event',
-          severity: 'error',
-        });
+      await sdk.deleteEvent(eventToDelete._id);
+      setSnackbar({
+        open: true,
+        message: 'Event deleted successfully!',
+        severity: 'success',
+      });
+      setDeleteDialogOpen(false);
+      setEventToDelete(null);
+      if (selectedEvent?._id === eventToDelete._id) {
+        setSelectedEvent(null);
       }
+      loadEvents();
     } catch (error) {
       setSnackbar({
         open: true,
-        message: 'Failed to delete event',
+        message: (error as Error).message || 'Failed to delete event',
         severity: 'error',
       });
     }
