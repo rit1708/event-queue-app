@@ -31,7 +31,8 @@ import {
   Delete as DeleteIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import * as sdk from './sdk';
+import * as sdk from 'queue-sdk';
+import type { Event } from 'queue-sdk';
 
 interface TabPanelProps {
   children?: React.ReactNode;
@@ -61,13 +62,13 @@ function TabPanel(props: TabPanelProps) {
 
 export default function AdminPanel() {
   const [tabValue, setTabValue] = useState(0);
-  const [events, setEvents] = useState<sdk.Event[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [queueUsers, setQueueUsers] = useState<{userId: string; position: number; joinedAt: string}[]>([]);
-  const [selectedEvent, setSelectedEvent] = useState<sdk.Event | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<Event | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [snackbar, setSnackbar] = useState({ open: false, message: '' });
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
-  const [newEvent, setNewEvent] = useState<Omit<sdk.Event, '_id'>>({ 
+  const [newEvent, setNewEvent] = useState<Omit<Event, '_id'>>({ 
     name: '',
     domain: 'default',
     queueLimit: 5,
@@ -76,6 +77,7 @@ export default function AdminPanel() {
   });
 
   useEffect(() => {
+    // SDK will auto-detect API URL from environment or use relative path
     fetchEvents();
   }, []);
 
@@ -94,7 +96,20 @@ export default function AdminPanel() {
   const fetchQueueUsers = async (eventId: string) => {
     try {
       const users = await sdk.getQueueUsers(eventId);
-      setQueueUsers(users);
+      // Transform the response to match the expected format
+      const transformedUsers = [
+        ...users.active.map((userId, index) => ({
+          userId,
+          position: index + 1,
+          joinedAt: new Date().toISOString(),
+        })),
+        ...users.waiting.map((userId, index) => ({
+          userId,
+          position: users.active.length + index + 1,
+          joinedAt: new Date().toISOString(),
+        })),
+      ];
+      setQueueUsers(transformedUsers);
     } catch (error) {
       showError('Failed to fetch queue users');
     }
@@ -102,16 +117,29 @@ export default function AdminPanel() {
 
   const handleCreateEvent = async () => {
     try {
-      await sdk.createEvent(newEvent);
+      await sdk.createEvent({
+        domain: newEvent.domain,
+        name: newEvent.name,
+        queueLimit: newEvent.queueLimit,
+        intervalSec: newEvent.intervalSec,
+      });
       await fetchEvents();
       setIsCreateDialogOpen(false);
+      // Reset form
+      setNewEvent({
+        name: '',
+        domain: 'default',
+        queueLimit: 5,
+        intervalSec: 60,
+        isActive: false,
+      });
       showMessage('Event created successfully');
     } catch (error) {
       showError('Failed to create event');
     }
   };
 
-  const toggleEventStatus = async (event: sdk.Event) => {
+  const toggleEventStatus = async (event: Event) => {
     try {
       await sdk.updateQueueStatus(event._id, !event.isActive);
       await fetchEvents();

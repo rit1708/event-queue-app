@@ -156,6 +156,42 @@ router.get('/health', (_req: Request, res: Response) => res.json({ ok: true }));
 // Root health for platform probes
 app.get('/', (_req: Request, res: Response) => res.json({ ok: true }));
 
+// SDK CDN endpoint - serve the SDK for use across multiple projects
+// Usage: <script type="module" src="https://your-api-domain.com/api/sdk"></script>
+router.get('/sdk', async (_req: Request, res: Response) => {
+  try {
+    const fs = await import('fs/promises');
+    const path = await import('path');
+    
+    // Try to read the built SDK file
+    const sdkPath = path.join(
+      process.cwd(),
+      '..',
+      '..',
+      'packages',
+      'sdk',
+      'dist',
+      'index.js'
+    );
+    
+    try {
+      const sdkContent = await fs.readFile(sdkPath, 'utf-8');
+      res.setHeader('Content-Type', 'application/javascript');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.send(sdkContent);
+    } catch (error) {
+      // If SDK file doesn't exist, return a helpful message
+      res.status(404).json({
+        error: 'SDK not found. Please build the SDK first: cd packages/sdk && npm run build',
+      });
+    }
+  } catch (error) {
+    console.error('Error serving SDK:', error);
+    res.status(500).json({ error: 'Failed to serve SDK' });
+  }
+});
+
 // Admin: create domain
 router.post('/admin/domain', async (req: Request, res: Response) => {
   const schema = z.object({ name: z.string().min(1) });
