@@ -49,6 +49,8 @@ export async function getQueueStatus(
       timeRemaining: data.timeRemaining ?? 0,
       activeUsers: data.activeUsers ?? 0,
       waitingUsers: data.waitingUsers ?? 0,
+      showWaitingTimer: data.showWaitingTimer ?? false,
+      waitingTimerDuration: data.waitingTimerDuration ?? 0,
     };
   } catch (error) {
     log('Error getting queue status, returning default', error);
@@ -59,6 +61,8 @@ export async function getQueueStatus(
       timeRemaining: 0,
       activeUsers: 0,
       waitingUsers: 0,
+      showWaitingTimer: false,
+      waitingTimerDuration: 0,
     };
   }
 }

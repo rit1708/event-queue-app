@@ -1,9 +1,25 @@
 import { Request, Response } from 'express';
 import { ObjectId } from 'mongodb';
 import { getDb } from '../db/mongo';
-import { getRedis, advanceQueue, enqueueUser, getStatus, ensureEventKeys } from '../db/queue';
+import {
+  getRedis,
+  advanceQueue,
+  enqueueUser,
+  getStatus,
+  ensureEventKeys,
+} from '../db/queue';
 import { NotFoundError, RedisError } from '../utils/errors';
 import { QueueStatus, QueueUsers } from '../types';
+
+// Helper function to generate Redis keys
+function keys(eventId: string) {
+  return {
+    waiting: `q:${eventId}:waiting`,
+    active: `q:${eventId}:active`,
+    timer: `q:${eventId}:timer`,
+    userset: `q:${eventId}:users`,
+  };
+}
 
 export const joinQueue = async (req: Request, res: Response): Promise<void> => {
   const { eventId, userId } = req.body;
@@ -21,43 +37,132 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
   const isConnected = await ensureEventKeys(redis, eventId);
 
   if (!isConnected) {
-    throw new RedisError('Queue service temporarily unavailable. Please try again later.');
+    throw new RedisError(
+      'Queue service temporarily unavailable. Please try again later.'
+    );
   }
 
   // Check current queue status
   const status = await getStatus(redis, eventId, userId);
 
-  // If queue is full, return waiting status
-  if (status.state === 'waiting' && status.position > event.queueLimit) {
+  // If user is already active, return active status
+  if (status.state === 'active') {
     res.json({
-      success: false,
-      status: 'waiting',
-      message: 'Queue is full. Please wait...',
-      waitTime: event.intervalSec,
-      position: status.position,
-      total: status.total,
-      activeUsers: status.activeUsers,
-      waitingUsers: status.waitingUsers,
+      success: true,
+      status: 'active',
+      state: 'active',
+      ...status,
+      showWaitingTimer: false,
     });
     return;
   }
 
-  // If not in queue, enqueue the user
-  if (status.state !== 'active') {
-    await enqueueUser(redis, eventId, userId);
-    await advanceQueue(redis, eventId, event.queueLimit, event.intervalSec);
+  // Check entry window availability (Entry Timer Logic)
+  const k = keys(eventId);
+  const [ttl, activeLen, waitingLen] = await Promise.all([
+    redis.ttl(k.timer),
+    redis.llen(k.active),
+    redis.llen(k.waiting),
+  ]);
+
+  const entryWindowActive = ttl > 0; // Entry timer is running
+  const hasAvailableSlots = activeLen < event.queueLimit; // Not at capacity
+  const canEnterDirectly = !entryWindowActive || hasAvailableSlots; // Can enter if timer expired OR slots available
+
+  // If user is not in queue and can enter directly
+  if (status.state !== 'waiting' && canEnterDirectly) {
+    // Add user directly to active queue
+    await redis.sadd(k.userset, userId);
+    await redis.rpush(k.active, userId);
+
+    // If this fills the queue or timer was expired, start/refresh entry timer
+    const newActiveLen = activeLen + 1;
+    if (newActiveLen >= event.queueLimit || !entryWindowActive) {
+      await redis.set(k.timer, '1', 'EX', event.intervalSec);
+    }
+
+    // Log entry to Mongo
+    try {
+      await db
+        .collection('entries')
+        .insertOne({ eventId, userId, enteredAt: new Date() });
+    } catch {}
+
+    // Get updated status
+    const updatedStatus = await getStatus(redis, eventId, userId);
+    res.json({
+      success: true,
+      status: 'active',
+      state: 'active',
+      ...updatedStatus,
+      showWaitingTimer: false, // No waiting timer needed - entered directly
+    });
+    return;
   }
 
-  // Get updated status
+  // If user is not in queue but cannot enter directly (entry window full)
+  if (status.state !== 'waiting' && !canEnterDirectly) {
+    // Add user to waiting queue
+    await enqueueUser(redis, eventId, userId);
+
+    // Get updated status
+    const updatedStatus = await getStatus(redis, eventId, userId);
+    res.json({
+      success: true,
+      status: 'waiting',
+      state: 'waiting',
+      ...updatedStatus,
+      showWaitingTimer: true, // Show 45-second waiting timer
+      waitingTimerDuration: 45, // 45 seconds
+    });
+    return;
+  }
+
+  // If user is already in waiting queue
+  if (status.state === 'waiting') {
+    // Check if they can be moved to active now
+    await advanceQueue(redis, eventId, event.queueLimit, event.intervalSec);
+    const updatedStatus = await getStatus(redis, eventId, userId);
+
+    // Determine if waiting timer should be shown
+    // Show timer only if entry window is active and at capacity
+    const [updatedTtl, updatedActiveLen] = await Promise.all([
+      redis.ttl(k.timer),
+      redis.llen(k.active),
+    ]);
+    const entryWindowFull =
+      updatedTtl > 0 && updatedActiveLen >= event.queueLimit;
+    const shouldShowTimer =
+      updatedStatus.state === 'waiting' && entryWindowFull;
+
+    res.json({
+      success: true,
+      status: updatedStatus.state,
+      state: updatedStatus.state,
+      ...updatedStatus,
+      showWaitingTimer: shouldShowTimer,
+      waitingTimerDuration: shouldShowTimer ? 45 : 0,
+    });
+    return;
+  }
+
+  // Fallback: enqueue and advance
+  await enqueueUser(redis, eventId, userId);
+  await advanceQueue(redis, eventId, event.queueLimit, event.intervalSec);
   const updatedStatus = await getStatus(redis, eventId, userId);
   res.json({
     success: true,
     status: updatedStatus.state,
+    state: updatedStatus.state,
     ...updatedStatus,
+    showWaitingTimer: false,
   });
 };
 
-export const getQueueStatus = async (req: Request, res: Response): Promise<void> => {
+export const getQueueStatus = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const { eventId, userId } = req.query as { eventId: string; userId: string };
   const db = await getDb();
 
@@ -82,16 +187,34 @@ export const getQueueStatus = async (req: Request, res: Response): Promise<void>
       activeUsers: 0,
       waitingUsers: 0,
     };
-    res.json(defaultStatus);
+    res.json({ ...defaultStatus, showWaitingTimer: false });
     return;
   }
 
   await advanceQueue(redis, eventId, event.queueLimit, event.intervalSec);
   const status = await getStatus(redis, eventId, userId);
-  res.json(status);
+
+  // Determine if waiting timer should be shown
+  // Show timer only if user is waiting AND entry window is active and at capacity
+  const k = keys(eventId);
+  const [ttl, activeLen] = await Promise.all([
+    redis.ttl(k.timer),
+    redis.llen(k.active),
+  ]);
+  const entryWindowFull = ttl > 0 && activeLen >= event.queueLimit;
+  const shouldShowTimer = status.state === 'waiting' && entryWindowFull;
+
+  res.json({
+    ...status,
+    showWaitingTimer: shouldShowTimer,
+    waitingTimerDuration: shouldShowTimer ? 45 : 0,
+  });
 };
 
-export const getQueueUsers = async (req: Request, res: Response): Promise<void> => {
+export const getQueueUsers = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const { eventId } = req.query as { eventId: string };
   const db = await getDb();
 
@@ -133,12 +256,17 @@ export const getQueueUsers = async (req: Request, res: Response): Promise<void> 
   });
 };
 
-export const advanceQueueManually = async (req: Request, res: Response): Promise<void> => {
+export const advanceQueueManually = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const { id } = req.params;
   const db = await getDb();
 
   // Verify event exists
-  const event = await db.collection('events').findOne({ _id: new ObjectId(id) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(id) });
   if (!event) {
     throw new NotFoundError('Event', id);
   }
@@ -185,12 +313,17 @@ export const advanceQueueManually = async (req: Request, res: Response): Promise
   });
 };
 
-export const startQueue = async (req: Request, res: Response): Promise<void> => {
+export const startQueue = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const { eventId } = req.body;
   const db = await getDb();
 
   // Verify event exists
-  const event = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(eventId) });
   if (!event) {
     throw new NotFoundError('Event', eventId);
   }
@@ -223,7 +356,10 @@ export const startQueue = async (req: Request, res: Response): Promise<void> => 
   // Mark event as active
   await db
     .collection('events')
-    .updateOne({ _id: new ObjectId(eventId) }, { $set: { isActive: true, updatedAt: new Date() } });
+    .updateOne(
+      { _id: new ObjectId(eventId) },
+      { $set: { isActive: true, updatedAt: new Date() } }
+    );
 
   res.json({ success: true });
 };
@@ -233,7 +369,9 @@ export const stopQueue = async (req: Request, res: Response): Promise<void> => {
   const db = await getDb();
 
   // Verify event exists
-  const event = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(eventId) });
   if (!event) {
     throw new NotFoundError('Event', eventId);
   }
@@ -251,17 +389,25 @@ export const stopQueue = async (req: Request, res: Response): Promise<void> => {
   // Mark event as inactive (even if Redis is unavailable)
   await db
     .collection('events')
-    .updateOne({ _id: new ObjectId(eventId) }, { $set: { isActive: false, updatedAt: new Date() } });
+    .updateOne(
+      { _id: new ObjectId(eventId) },
+      { $set: { isActive: false, updatedAt: new Date() } }
+    );
 
   res.json({ success: true });
 };
 
-export const enqueueUserAdmin = async (req: Request, res: Response): Promise<void> => {
+export const enqueueUserAdmin = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const { eventId, userId } = req.body;
   const db = await getDb();
 
   // Verify event exists
-  const event = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(eventId) });
   if (!event) {
     throw new NotFoundError('Event', eventId);
   }
@@ -279,12 +425,17 @@ export const enqueueUserAdmin = async (req: Request, res: Response): Promise<voi
   res.json({ success: true });
 };
 
-export const enqueueBatch = async (req: Request, res: Response): Promise<void> => {
+export const enqueueBatch = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
   const { eventId, count } = req.body;
   const db = await getDb();
 
   // Verify event exists
-  const event = await db.collection('events').findOne({ _id: new ObjectId(eventId) });
+  const event = await db
+    .collection('events')
+    .findOne({ _id: new ObjectId(eventId) });
   if (!event) {
     throw new NotFoundError('Event', eventId);
   }
@@ -307,4 +458,3 @@ export const enqueueBatch = async (req: Request, res: Response): Promise<void> =
 
   res.json({ success: true, users });
 };
-

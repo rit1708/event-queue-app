@@ -55,9 +55,49 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
   });
   const [waitDialog, setWaitDialog] = useState<WaitDialogState>(defaultWaitDialogState);
 
-  // Timer countdown for wait dialog
+  // Manage 45-second waiting timer based on queue status
   useEffect(() => {
-    if (!waitDialog.open || waitDialog.remaining <= 0) {
+    if (!hasJoined || !queueStatus) {
+      return;
+    }
+
+    // If user becomes active, close waiting timer
+    if (queueStatus.state === 'active') {
+      setWaitDialog(defaultWaitDialogState);
+      return;
+    }
+
+    // If user is waiting
+    if (queueStatus.state === 'waiting') {
+      const statusWithTimer = queueStatus as any;
+      const showTimer = statusWithTimer.showWaitingTimer && statusWithTimer.waitingTimerDuration;
+      
+      if (showTimer) {
+        // Show 45-second waiting timer if entry limit is exceeded
+        const timerDuration = statusWithTimer.waitingTimerDuration || 45;
+        setWaitDialog((prev) => {
+          // Reset timer if it was closed, duration changed, or timer reached 0
+          if (!prev.open || prev.duration !== timerDuration || prev.remaining <= 0) {
+            return {
+              open: true,
+              duration: timerDuration,
+              remaining: timerDuration,
+              message: `Entry limit exceeded. Please wait ${timerDuration} seconds. Position: ${queueStatus.position} of ${queueStatus.total}`,
+            };
+          }
+          // Keep existing countdown if timer is still running
+          return prev;
+        });
+      } else {
+        // Entry window is not full - close waiting timer
+        setWaitDialog(defaultWaitDialogState);
+      }
+    }
+  }, [hasJoined, queueStatus]);
+
+  // Timer countdown for 45-second waiting timer
+  useEffect(() => {
+    if (!waitDialog.open || waitDialog.remaining <= 0 || waitDialog.duration !== 45) {
       return;
     }
 
@@ -74,38 +114,7 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [waitDialog.open, waitDialog.remaining]);
-
-  // Show waiting modal popup when user has joined and is waiting
-  useEffect(() => {
-    if (hasJoined && queueStatus && queueStatus.state === 'waiting') {
-      setWaitDialog({
-        open: true,
-        duration: queueStatus.timeRemaining || 45,
-        remaining: queueStatus.timeRemaining || 45,
-        message: `You are in the queue! Position: ${queueStatus.position} of ${queueStatus.total}`,
-      });
-    } else if (hasJoined && queueStatus && queueStatus.state === 'active') {
-      // Close dialog when user becomes active
-      setWaitDialog(defaultWaitDialogState);
-    }
-  }, [hasJoined, queueStatus]);
-
-  // Update wait dialog timer from queueStatus timeRemaining
-  useEffect(() => {
-    if (
-      waitDialog.open &&
-      queueStatus &&
-      queueStatus.state === 'waiting' &&
-      queueStatus.timeRemaining > 0
-    ) {
-      setWaitDialog((prev) => ({
-        ...prev,
-        remaining: queueStatus.timeRemaining,
-        duration: Math.max(prev.duration, queueStatus.timeRemaining),
-      }));
-    }
-  }, [queueStatus?.timeRemaining, waitDialog.open]);
+  }, [waitDialog.open, waitDialog.remaining, waitDialog.duration]);
 
   const waitProgress = useMemo(() => {
     if (!waitDialog.open || waitDialog.duration === 0) {
@@ -131,10 +140,27 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
 
     if (result.success) {
       setHasJoined(true);
+      
+      // If user entered directly (active state), no waiting timer needed
+      if (result.state === 'active') {
+        setWaitDialog(defaultWaitDialogState);
+      }
+      // If user is waiting and showWaitingTimer is true, show 45-second timer
+      else if (result.state === 'waiting' && (result as any).showWaitingTimer && (result as any).waitingTimerDuration) {
+        const timerDuration = (result as any).waitingTimerDuration || 45;
+        setWaitDialog({
+          open: true,
+          duration: timerDuration,
+          remaining: timerDuration,
+          message: `Entry limit exceeded. Please wait ${timerDuration} seconds. Position: ${result.position || 0} of ${result.total || 0}`,
+        });
+      }
+      
       // Polling will start automatically via enabled prop
       return;
     }
 
+    // Legacy handling for non-success responses
     if (typeof result.waitTime === 'number' && result.waitTime > 0) {
       setWaitDialog({
         open: true,
@@ -159,7 +185,9 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
 
   const isActive = queueStatus?.state === 'active';
   const isWaiting = queueStatus?.state === 'waiting';
-  const showQueueModal = hasJoined && (isWaiting || isActive);
+  // Show queue modal when user has joined and has a status
+  // The 45-second waiting timer will be shown inside the modal only when showWaitingTimer is true
+  const showQueueModal = Boolean(hasJoined && queueStatus && (isActive || isWaiting));
 
   return (
     <Box>
@@ -210,7 +238,7 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
 
       {/* Queue Status Modal Popup - Shows timer/status for both waiting and active */}
       <Dialog
-        open={showQueueModal || waitDialog.open}
+        open={showQueueModal}
         onClose={handleWaitDialogClose}
         aria-labelledby="queue-status-dialog-title"
         maxWidth="sm"
@@ -243,8 +271,32 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
                 />
               </Box>
 
-              {/* Timer countdown */}
-              {queueStatus.timeRemaining > 0 && (
+              {/* 45-second Waiting Timer - Only shown when entry limit is exceeded */}
+              {isWaiting && (queueStatus as any).showWaitingTimer && waitDialog.open && waitDialog.remaining > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography
+                    variant="h3"
+                    align="center"
+                    sx={{ fontWeight: 700, mb: 1, color: 'warning.main' }}
+                  >
+                    {waitDialog.remaining}s
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1, mb: 2 }}>
+                    <AccessTimeIcon fontSize="small" color="action" />
+                    <Typography variant="body2" color="text.secondary">
+                      Waiting timer - Entry limit exceeded
+                    </Typography>
+                  </Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={waitProgress}
+                    sx={{ height: 8, borderRadius: 4 }}
+                  />
+                </Box>
+              )}
+
+              {/* Entry Timer - Shows time remaining for entry window (only for active users or when not showing waiting timer) */}
+              {!((queueStatus as any).showWaitingTimer) && queueStatus.timeRemaining > 0 && (
                 <Box sx={{ mb: 3 }}>
                   <Typography
                     variant="h3"

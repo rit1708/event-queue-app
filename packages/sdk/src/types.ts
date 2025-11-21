@@ -5,6 +5,8 @@ export interface QueueStatus {
   timeRemaining: number;
   activeUsers: number;
   waitingUsers: number;
+  showWaitingTimer?: boolean; // Whether to show the 45-second waiting timer
+  waitingTimerDuration?: number; // Duration of waiting timer in seconds (45)
 }
 
 export interface Event {
@@ -42,6 +44,8 @@ export interface JoinQueueResponse {
   waitingUsers?: number;
   message?: string;
   waitTime?: number;
+  showWaitingTimer?: boolean; // Whether to show the 45-second waiting timer
+  waitingTimerDuration?: number; // Duration of waiting timer in seconds (45)
 }
 
 export interface InitOptions {
