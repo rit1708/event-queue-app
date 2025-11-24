@@ -36,6 +36,7 @@ export interface QueueJoinModalProps {
   showCancelButton?: boolean;
   cancelButtonText?: string;
   closeButtonText?: string;
+  redirectUrl?: string;
 }
 
 export function QueueJoinModal({
@@ -54,6 +55,7 @@ export function QueueJoinModal({
   showCancelButton = true,
   cancelButtonText = 'Cancel',
   closeButtonText = 'Close',
+  redirectUrl,
 }: QueueJoinModalProps) {
   const queueManager = useQueueManager({
     eventId,
@@ -65,6 +67,7 @@ export function QueueJoinModal({
     autoJoin,
     onActive,
     onRedirect,
+    redirectUrl,
   });
 
   const {
@@ -235,6 +238,11 @@ export function QueueJoinModal({
                     value={waitProgress}
                     sx={{ height: 8, borderRadius: 4 }}
                   />
+                  {queueStatus.total > 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontWeight: 600 }}>
+                      Your position: {queueStatus.position} / {queueStatus.total}
+                    </Typography>
+                  )}
                 </Box>
               )}
 

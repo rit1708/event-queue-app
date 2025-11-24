@@ -12,6 +12,7 @@ export interface UseQueueManagerOptions {
   autoJoin?: boolean;
   onActive?: (event: Event) => void;
   onRedirect?: (url: string) => void;
+  redirectUrl?: string;
 }
 
 export interface QueueManagerState {
@@ -46,6 +47,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     autoJoin = false,
     onActive,
     onRedirect,
+    redirectUrl,
   } = options;
 
   const effectiveEventId = eventId || event?._id;
@@ -70,13 +72,23 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
   const isActive = queueStatus?.state === 'active';
 
   // Format domain URL helper
-  const formatDomainUrl = useCallback((domain: string): string => {
-    if (!domain) return '#';
-    if (domain.startsWith('http://') || domain.startsWith('https://')) {
-      return domain;
+  const eventDomain = event?.domain ?? '';
+
+  const formatDomainUrl = useCallback((domain?: string): string => {
+    const value = domain?.trim();
+    if (!value) return '#';
+    if (value.startsWith('http://') || value.startsWith('https://')) {
+      return value;
     }
-    return `https://${domain}`;
+    return `https://${value}`;
   }, []);
+
+  const resolveRedirectTarget = useCallback(() => {
+    if (redirectUrl) {
+      return formatDomainUrl(redirectUrl);
+    }
+    return formatDomainUrl(eventDomain);
+  }, [redirectUrl, eventDomain, formatDomainUrl]);
 
   // Join queue function
   const joinQueue = useCallback(async (): Promise<void> => {
@@ -139,19 +151,20 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
 
   // Close modal handler
   const closeModal = useCallback(() => {
-    if (isActive && event && onRedirect) {
-      const redirectUrl = formatDomainUrl(event.domain);
-      onRedirect(redirectUrl);
-    } else if (isActive && event) {
-      const redirectUrl = formatDomainUrl(event.domain);
-      window.location.href = redirectUrl;
+    if (isActive && (event || redirectUrl)) {
+      const targetUrl = resolveRedirectTarget();
+      if (onRedirect) {
+        onRedirect(targetUrl);
+      } else if (targetUrl && targetUrl !== '#') {
+        window.location.href = targetUrl;
+      }
     } else if (!isWaiting && !isActive) {
       // Allow closing if not waiting or active
       setShowModal(false);
       setHasJoined(false);
       setHasRedirected(false);
     }
-  }, [isActive, isWaiting, event, onRedirect, formatDomainUrl]);
+  }, [isActive, isWaiting, event, onRedirect, resolveRedirectTarget, redirectUrl]);
 
   // Open modal
   const openModal = useCallback(() => {
@@ -262,26 +275,27 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
 
   // Redirect when user becomes active
   useEffect(() => {
-    if (event && isActive && !hasRedirected) {
+    if ((event || redirectUrl) && isActive && !hasRedirected) {
       setHasRedirected(true);
       
-      if (onActive) {
+      if (onActive && event) {
         onActive(event);
       }
-      
-      if (onRedirect) {
-        const redirectUrl = formatDomainUrl(event.domain);
-        setTimeout(() => {
-          onRedirect(redirectUrl);
-        }, 1500);
-      } else {
-        const redirectUrl = formatDomainUrl(event.domain);
-        setTimeout(() => {
-          window.location.href = redirectUrl;
-        }, 1500);
+
+      const targetUrl = resolveRedirectTarget();
+      const triggerRedirect = () => {
+        if (onRedirect) {
+          onRedirect(targetUrl);
+        } else if (targetUrl && targetUrl !== '#') {
+          window.location.href = targetUrl;
+        }
+      };
+
+      if (targetUrl && targetUrl !== '#') {
+        setTimeout(triggerRedirect, 1500);
       }
     }
-  }, [event, isActive, hasRedirected, onActive, onRedirect, formatDomainUrl]);
+  }, [event, isActive, hasRedirected, onActive, onRedirect, resolveRedirectTarget, redirectUrl]);
 
   // Auto-join if enabled (only when all required props are available)
   useEffect(() => {
@@ -317,6 +331,33 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     }),
     [joinQueue, closeModal, openModal, reset]
   );
+
+  useEffect(() => {
+    if (!waitDialog.open || waitDialog.remaining > 0 || waitDialog.duration === 0) {
+      return;
+    }
+    if (hasRedirected || !queueStatus || queueStatus.state !== 'waiting') {
+      return;
+    }
+
+    setHasRedirected(true);
+    const targetUrl = resolveRedirectTarget();
+    if (targetUrl && targetUrl !== '#') {
+      if (onRedirect) {
+        onRedirect(targetUrl);
+      } else {
+        window.location.href = targetUrl;
+      }
+    }
+  }, [
+    waitDialog.open,
+    waitDialog.remaining,
+    waitDialog.duration,
+    queueStatus,
+    hasRedirected,
+    resolveRedirectTarget,
+    onRedirect,
+  ]);
 
   return {
     ...state,

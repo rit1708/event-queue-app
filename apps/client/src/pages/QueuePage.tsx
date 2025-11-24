@@ -59,6 +59,13 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
               ? 'Check the popup to see your queue status and position.'
               : 'Click the button below to join the queue for this event'}
           </Typography>
+          {queueManager.queueStatus &&
+            queueManager.queueStatus.state === 'waiting' && (
+              <Typography variant="h6" color="primary" sx={{ mb: 2 }}>
+                Current position: {queueManager.queueStatus.position} /{' '}
+                {queueManager.queueStatus.total}
+              </Typography>
+            )}
           {queueManager.error && <ErrorDisplay message={queueManager.error} fullWidth />}
           {!queueManager.hasJoined && (
             <Button

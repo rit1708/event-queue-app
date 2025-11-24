@@ -9,7 +9,6 @@ export const createDomain = async (
   const { name } = req.body;
   const db = await getDb();
 
-  // Check if domain already exists
   const existing = await db.collection('domains').findOne({ name });
   if (existing) {
     throw new ConflictError(`Domain '${name}' already exists`);
