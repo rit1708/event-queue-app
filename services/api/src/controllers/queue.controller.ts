@@ -329,10 +329,40 @@ export const startQueue = async (
   }
 
   const redis = await getRedis();
-  const isConnected = await ensureEventKeys(redis, eventId);
+  // Try to connect if not connected, with multiple retry attempts
+  let isConnected = await ensureEventKeys(redis, eventId);
+  
+  // Retry connection up to 3 times with delays
+  if (!isConnected) {
+    for (let attempt = 0; attempt < 3 && !isConnected; attempt++) {
+      try {
+        // Wait a bit before retry (exponential backoff)
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        await redis.connect();
+        isConnected = await ensureEventKeys(redis, eventId);
+        if (isConnected) break;
+      } catch (connectErr) {
+        // Connection failed, will retry
+        if (attempt === 2) {
+          // Last attempt failed
+          const errorMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
+          throw new RedisError(
+            `Redis service unavailable after 3 connection attempts. ` +
+            `Error: ${errorMsg}. ` +
+            `Please ensure Redis is running on ${process.env.REDIS_URL || 'redis://127.0.0.1:6379'}. ` +
+            `Start Redis with: docker compose up redis -d (or redis-server for local install)`
+          );
+        }
+      }
+    }
+  }
 
   if (!isConnected) {
-    throw new RedisError('Redis service unavailable');
+    throw new RedisError(
+      `Redis service unavailable. Please ensure Redis is running on ${process.env.REDIS_URL || 'redis://127.0.0.1:6379'}. ` +
+      `Start Redis with: docker compose up redis -d (or redis-server for local install). ` +
+      `Check health at: /api/health`
+    );
   }
 
   const kActive = `q:${eventId}:active`;

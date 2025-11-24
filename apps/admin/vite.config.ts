@@ -69,6 +69,9 @@ const serverConfig = {
 export default defineConfig({
   plugins: [react(), filterConsoleNinjaPlugin()],
   server: serverConfig,
+  resolve: {
+    extensions: ['.tsx', '.ts', '.jsx', '.js', '.json'],
+  },
   build: {
     rollupOptions: {
       output: {

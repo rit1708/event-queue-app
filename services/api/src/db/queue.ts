@@ -91,18 +91,62 @@ export async function ensureEventKeys(
   eventId: string
 ): Promise<boolean> {
   try {
+    // Check connection status and try to connect if needed
     if (!redisConnected) {
       try {
-        await redis.connect();
+        // Try to connect with a timeout
+        await Promise.race([
+          redis.connect(),
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Connection timeout')), 3000)
+          )
+        ]);
         redisConnected = true;
+        redisErrorLogged = false;
       } catch (connectErr) {
+        redisConnected = false;
+        const errorMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
+        if (!redisErrorLogged) {
+          console.error('[redis] Connection attempt failed:', errorMsg);
+          redisErrorLogged = true;
+        }
         return false;
       }
     }
-    await redis.ping();
-    return true;
+    
+    // Verify connection with ping (with timeout)
+    try {
+      const pingResult = await Promise.race([
+        redis.ping(),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Ping timeout')), 2000)
+        )
+      ]);
+      
+      if (pingResult === 'PONG') {
+        redisConnected = true;
+        redisErrorLogged = false;
+        return true;
+      }
+    } catch (pingErr) {
+      redisConnected = false;
+      const errorMsg = pingErr instanceof Error ? pingErr.message : String(pingErr);
+      if (!redisErrorLogged) {
+        console.error('[redis] Ping failed:', errorMsg);
+        redisErrorLogged = true;
+      }
+      return false;
+    }
+    
+    return false;
   } catch (err) {
     // Redis not available, return false instead of throwing
+    redisConnected = false;
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    if (!redisErrorLogged) {
+      console.error('[redis] ensureEventKeys error:', errorMsg);
+      redisErrorLogged = true;
+    }
     return false;
   }
 }

@@ -44,11 +44,34 @@ import { apiLimiter } from './middleware/rateLimiter';
 const apiRouter = express.Router();
 apiRouter.use(apiLimiter);
 
-apiRouter.get('/health', (_req: Request, res: Response) => {
-  res.json({ 
+apiRouter.get('/health', async (_req: Request, res: Response) => {
+  const health = {
     ok: true,
     timestamp: new Date().toISOString(),
-  });
+    services: {
+      mongodb: false,
+      redis: false,
+    },
+  };
+
+  try {
+    await getDb();
+    health.services.mongodb = true;
+  } catch (e) {
+    health.ok = false;
+  }
+
+  try {
+    const { isRedisConnected } = await import('./db/queue');
+    health.services.redis = await isRedisConnected();
+    if (!health.services.redis) {
+      health.ok = false;
+    }
+  } catch (e) {
+    health.ok = false;
+  }
+
+  res.status(health.ok ? 200 : 503).json(health);
 });
 
 apiRouter.get('/sdk', async (_req: Request, res: Response) => {
