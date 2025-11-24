@@ -13,12 +13,13 @@ import {
   updateEvent,
   deleteEvent,
 } from '../controllers/event.controller';
+import { ensureDomainExists } from '../middleware/domainValidator';
 
 const router = Router();
 
 router.get('/', asyncHandler(getEvents));
 router.get('/:id', validate(eventIdSchema), asyncHandler(getEvent));
-router.post('/', validate(createEventSchema), asyncHandler(createEvent));
+router.post('/', validate(createEventSchema), ensureDomainExists, asyncHandler(createEvent));
 router.put('/:id', validate(updateEventSchema), asyncHandler(updateEvent));
 router.delete('/:id', validate(eventIdSchema), asyncHandler(deleteEvent));
 

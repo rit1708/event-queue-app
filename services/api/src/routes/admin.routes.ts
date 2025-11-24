@@ -21,11 +21,20 @@ import {
   enqueueBatch,
 } from '../controllers/queue.controller';
 import { Request, Response } from 'express';
+import {
+  ensureDomainAvailable,
+} from '../middleware/domainValidator';
 
 const router = Router();
 
 // Domain routes
-router.post('/domain', adminWriteLimiter, validate(createDomainSchema), asyncHandler(createDomain));
+router.post(
+  '/domain',
+  adminWriteLimiter,
+  validate(createDomainSchema),
+  ensureDomainAvailable,
+  asyncHandler(createDomain)
+);
 router.get('/domain', adminReadLimiter, asyncHandler(getDomains));
 
 // Event routes
