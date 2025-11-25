@@ -89,8 +89,6 @@ const MainContent = styled(Box)(({ theme }) => ({
   padding: theme.spacing(3),
 }));
 
-// Event type is now imported from queue-sdk
-
 interface QueueData {
   active: string[];
   waiting: string[];

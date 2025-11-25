@@ -4,7 +4,6 @@ import App from './App';
 import { ThemeProvider, createTheme, CssBaseline } from '@mui/material';
 import type { Shadows } from '@mui/material/styles';
 
-// ✅ Custom theme configuration
 const theme = createTheme({
   palette: {
     mode: 'light',
@@ -105,7 +104,6 @@ const theme = createTheme({
   shape: {
     borderRadius: 12,
   },
-  // ✅ Correct shadow array (25 items)
   shadows: ([
     'none',
     '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
@@ -114,7 +112,7 @@ const theme = createTheme({
     '0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)',
     '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
     ...Array(18).fill('0 25px 50px -12px rgba(0, 0, 0, 0.25)'),
-    'none', // 25th element
+    'none',
   ]) as unknown as Shadows,
   components: {
     MuiButton: {
@@ -201,7 +199,6 @@ const theme = createTheme({
   },
 });
 
-// ✅ Render only once (StrictMode removed)
 const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = createRoot(rootElement);
