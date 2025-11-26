@@ -100,8 +100,10 @@ export function QueueJoinModal({
       autoJoinAttemptedRef.current = true;
       // Small delay to ensure modal is rendered
       const timeoutId = setTimeout(() => {
-        console.log('Calling joinQueue...');
-        void joinQueue();
+        if (!loading) {
+          console.log('Calling joinQueue...');
+          void joinQueue();
+        }
       }, 150);
       return () => clearTimeout(timeoutId);
     }
@@ -161,8 +163,10 @@ export function QueueJoinModal({
               <Button
                 variant="contained"
                 onClick={() => {
-                  autoJoinAttemptedRef.current = false;
-                  void joinQueue();
+                  if (!loading) {
+                    autoJoinAttemptedRef.current = false;
+                    void joinQueue();
+                  }
                 }}
                 disabled={loading}
               >
@@ -177,11 +181,15 @@ export function QueueJoinModal({
             </Typography>
             <Button
               variant="contained"
-              onClick={() => {
-                autoJoinAttemptedRef.current = true;
-                void joinQueue();
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!loading && !hasJoined) {
+                  autoJoinAttemptedRef.current = true;
+                  void joinQueue();
+                }
               }}
-              disabled={loading}
+              disabled={loading || hasJoined}
             >
               Join Queue
             </Button>

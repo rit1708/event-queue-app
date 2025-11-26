@@ -9,7 +9,7 @@ import {
   ensureEventKeys,
 } from '../db/queue';
 import { NotFoundError, RedisError } from '../utils/errors';
-import { QueueStatus, QueueUsers } from '../types';
+import { QueueStatus, QueueUsers, Event } from '../types';
 
 // Helper function to generate Redis keys
 function keys(eventId: string) {
@@ -25,12 +25,26 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
   const { eventId, userId } = req.body;
   const db = await getDb();
 
-  // Verify event exists
-  const event = await db
-    .collection('events')
-    .findOne({ _id: new ObjectId(eventId) });
+  // Use validated event from middleware if available, otherwise fetch it
+  let event: Event = res.locals.validatedEvent as Event;
   if (!event) {
-    throw new NotFoundError('Event', eventId);
+    // Fallback: verify event exists (shouldn't happen if middleware is working)
+    const eventDoc = await db
+      .collection('events')
+      .findOne({ _id: new ObjectId(eventId) });
+    if (!eventDoc) {
+      throw new NotFoundError('Event', eventId);
+    }
+    event = {
+      _id: String(eventDoc._id),
+      name: eventDoc.name,
+      domain: eventDoc.domain,
+      queueLimit: eventDoc.queueLimit,
+      intervalSec: eventDoc.intervalSec,
+      isActive: eventDoc.isActive || false,
+      createdAt: eventDoc.createdAt,
+      updatedAt: eventDoc.updatedAt,
+    };
   }
 
   const redis = await getRedis();
@@ -331,13 +345,15 @@ export const startQueue = async (
   const redis = await getRedis();
   // Try to connect if not connected, with multiple retry attempts
   let isConnected = await ensureEventKeys(redis, eventId);
-  
+
   // Retry connection up to 3 times with delays
   if (!isConnected) {
     for (let attempt = 0; attempt < 3 && !isConnected; attempt++) {
       try {
         // Wait a bit before retry (exponential backoff)
-        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
+        await new Promise((resolve) =>
+          setTimeout(resolve, 500 * (attempt + 1))
+        );
         await redis.connect();
         isConnected = await ensureEventKeys(redis, eventId);
         if (isConnected) break;
@@ -345,12 +361,15 @@ export const startQueue = async (
         // Connection failed, will retry
         if (attempt === 2) {
           // Last attempt failed
-          const errorMsg = connectErr instanceof Error ? connectErr.message : String(connectErr);
+          const errorMsg =
+            connectErr instanceof Error
+              ? connectErr.message
+              : String(connectErr);
           throw new RedisError(
             `Redis service unavailable after 3 connection attempts. ` +
-            `Error: ${errorMsg}. ` +
-            `Please ensure Redis is running on ${process.env.REDIS_URL || 'redis://127.0.0.1:6379'}. ` +
-            `Start Redis with: docker compose up redis -d (or redis-server for local install)`
+              `Error: ${errorMsg}. ` +
+              `Please ensure Redis is running on ${process.env.REDIS_URL || 'redis://127.0.0.1:6379'}. ` +
+              `Start Redis with: docker compose up redis -d (or redis-server for local install)`
           );
         }
       }
@@ -360,8 +379,8 @@ export const startQueue = async (
   if (!isConnected) {
     throw new RedisError(
       `Redis service unavailable. Please ensure Redis is running on ${process.env.REDIS_URL || 'redis://127.0.0.1:6379'}. ` +
-      `Start Redis with: docker compose up redis -d (or redis-server for local install). ` +
-      `Check health at: /api/health`
+        `Start Redis with: docker compose up redis -d (or redis-server for local install). ` +
+        `Check health at: /api/health`
     );
   }
 

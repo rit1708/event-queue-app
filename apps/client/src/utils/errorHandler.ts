@@ -33,3 +33,4 @@ export const handleApiError = (error: unknown): string => {
   return message || 'An error occurred. Please try again.';
 };
 
+
