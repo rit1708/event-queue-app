@@ -27,3 +27,4 @@ export const ErrorDisplay = ({ message, onRetry, fullWidth = false }: ErrorDispl
   );
 };
 
+

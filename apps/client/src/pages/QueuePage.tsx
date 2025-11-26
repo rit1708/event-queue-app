@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Container,
   Box,
@@ -31,9 +31,21 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
     pollInterval: 2000,
   });
 
-  const handleJoinQueue = async () => {
-    await queueManager.joinQueue();
-  };
+  const handleJoinQueue = useCallback(async () => {
+    // Prevent multiple clicks - check all conditions
+    if (queueManager.loading || queueManager.hasJoined) {
+      console.log('Join queue blocked:', { loading: queueManager.loading, hasJoined: queueManager.hasJoined });
+      return;
+    }
+    
+    // Additional guard: prevent rapid clicks with debounce
+    try {
+      await queueManager.joinQueue();
+    } catch (error) {
+      // Error is already handled in queueManager
+      console.error('Join queue error:', error);
+    }
+  }, [queueManager.loading, queueManager.hasJoined, queueManager.joinQueue]);
 
   return (
     <Box>
@@ -71,8 +83,12 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
             <Button
               variant="contained"
               size="large"
-              onClick={handleJoinQueue}
-              disabled={queueManager.loading}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleJoinQueue();
+              }}
+              disabled={queueManager.loading || queueManager.hasJoined}
               sx={{ mt: 2 }}
             >
               {queueManager.loading ? 'Joining...' : 'Join Queue'}

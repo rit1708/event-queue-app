@@ -11,3 +11,4 @@ export async function getEvent(eventId: string): Promise<Event> {
   }
   return get<Event>(`/events/${eventId}`);
 }
+

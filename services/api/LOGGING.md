@@ -45,3 +45,4 @@ logger.error('Failed to enqueue user', error, { eventId, userId });
 
 Logs are appended to the configured files. Use external tools (e.g., `logrotate`, `pm2`, or container log drivers) to rotate/compress logs in production.
 
+

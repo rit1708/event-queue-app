@@ -124,3 +124,4 @@ export const deleteEvent = async (
 
   res.json({ success: true });
 };
+

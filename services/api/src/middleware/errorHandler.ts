@@ -70,7 +70,8 @@ export const errorHandler = (
     ) {
       res.status(503).json({
         success: false,
-        error: 'Database service temporarily unavailable. Please try again later.',
+        error:
+          'Database service temporarily unavailable. Please try again later.',
         code: 'DATABASE_UNAVAILABLE',
       });
       return;
@@ -80,9 +81,12 @@ export const errorHandler = (
   // Default error response
   res.status(500).json({
     success: false,
-    error: process.env.NODE_ENV === 'production' 
-      ? 'Internal server error' 
-      : err instanceof Error ? err.message : 'Unknown error occurred',
+    error:
+      process.env.NODE_ENV === 'production'
+        ? 'Internal server error'
+        : err instanceof Error
+          ? err.message
+          : 'Unknown error occurred',
     code: 'INTERNAL_ERROR',
   });
 };

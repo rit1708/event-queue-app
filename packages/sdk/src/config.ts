@@ -83,3 +83,4 @@ function log(message: string, ...args: unknown[]): void {
 }
 
 export { log };
+

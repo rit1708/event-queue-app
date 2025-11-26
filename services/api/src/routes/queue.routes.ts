@@ -10,10 +10,11 @@ import {
   joinQueue,
   getQueueStatus,
 } from '../controllers/queue.controller';
+import { validateQueueAccess } from '../middleware/queueValidator';
 
 const router = Router();
 
-router.post('/join', queueJoinLimiter, validate(joinQueueSchema), asyncHandler(joinQueue));
+router.post('/join', queueJoinLimiter, validate(joinQueueSchema), validateQueueAccess, asyncHandler(joinQueue));
 router.get('/status', queueStatusLimiter, validate(queueStatusSchema), asyncHandler(getQueueStatus));
 
 export default router;

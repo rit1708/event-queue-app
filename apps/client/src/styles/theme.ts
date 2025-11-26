@@ -78,3 +78,4 @@ export const QueueStatusCard = styled(Paper)(({ theme }) => ({
   border: `2px solid ${alpha('#6366f1', 0.1)}`,
 }));
 
+

@@ -6,6 +6,7 @@ import { ValidationError } from './types';
 export async function joinQueue(
   eventId: string,
   userId: string,
+  domain?: string,
   options?: { signal?: AbortSignal }
 ): Promise<JoinQueueResponse> {
   if (!eventId || typeof eventId !== 'string') {
@@ -15,7 +16,17 @@ export async function joinQueue(
     throw new ValidationError('User ID is required and must be a string');
   }
 
-  return post<JoinQueueResponse>('/queue/join', { eventId, userId }, options);
+  const body: { eventId: string; userId: string; domain?: string } = {
+    eventId,
+    userId,
+  };
+
+  // Include domain if provided
+  if (domain && typeof domain === 'string' && domain.trim().length > 0) {
+    body.domain = domain.trim();
+  }
+
+  return post<JoinQueueResponse>('/queue/join', body, options);
 }
 
 export async function getQueueStatus(
