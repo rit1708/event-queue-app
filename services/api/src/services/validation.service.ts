@@ -117,12 +117,29 @@ export async function validateDomainAndEvent(
 /**
  * Validates domain and event from request
  * Extracts domain and eventId from request body or query
+ * If domain is not provided, it will be fetched from the event
  */
 export async function validateDomainAndEventFromRequest(
   req: { body?: any; query?: any }
 ): Promise<ValidationResult> {
-  const domainName = req.body?.domain || req.query?.domain || null;
+  let domainName = req.body?.domain || req.query?.domain || null;
   const eventId = req.body?.eventId || req.query?.eventId || null;
+
+  // If domain is not provided but eventId is, fetch domain from event
+  if (!domainName && eventId && ObjectId.isValid(eventId)) {
+    try {
+      const db = await getDb();
+      const eventDoc = await db
+        .collection('events')
+        .findOne({ _id: new ObjectId(eventId) });
+      
+      if (eventDoc && eventDoc.domain) {
+        domainName = eventDoc.domain;
+      }
+    } catch (error) {
+      // Will be handled by validateDomainAndEvent
+    }
+  }
 
   return validateDomainAndEvent(domainName, eventId);
 }

@@ -10,6 +10,8 @@ import {
   enqueueBatchSchema,
   startQueueSchema,
   stopQueueSchema,
+  createEventSchema,
+  updateEventSchema,
 } from '../schemas/event.schema';
 import { createDomain, getDomains } from '../controllers/domain.controller';
 import {
@@ -20,6 +22,12 @@ import {
   enqueueUserAdmin,
   enqueueBatch,
 } from '../controllers/queue.controller';
+import {
+  createEvent,
+  updateEvent,
+  deleteEvent,
+} from '../controllers/event.controller';
+import { ensureDomainExists } from '../middleware/domainValidator';
 import { Request, Response } from 'express';
 import {
   ensureDomainAvailable,
@@ -37,15 +45,13 @@ router.post(
 );
 router.get('/domain', adminReadLimiter, asyncHandler(getDomains));
 
-// Event routes
+// Event routes - specific routes must come before parameterized routes
+// Event queue management routes (specific paths)
 router.get('/event/users', adminReadLimiter, validate(eventUsersSchema), asyncHandler(getQueueUsers));
-router.post('/event/:id/advance', adminWriteLimiter, validate(eventIdSchema), asyncHandler(advanceQueueManually));
 router.post('/event/start', adminWriteLimiter, validate(startQueueSchema), asyncHandler(startQueue));
 router.post('/event/stop', adminWriteLimiter, validate(stopQueueSchema), asyncHandler(stopQueue));
 router.post('/event/enqueue', adminWriteLimiter, validate(enqueueUserSchema), asyncHandler(enqueueUserAdmin));
 router.post('/event/enqueue-batch', adminWriteLimiter, validate(enqueueBatchSchema), asyncHandler(enqueueBatch));
-
-// Entry history
 router.get('/event/entries', adminReadLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { getDb } = await import('../db/mongo');
   const eventId = String(req.query.eventId || '');
@@ -62,6 +68,28 @@ router.get('/event/entries', adminReadLimiter, asyncHandler(async (req: Request,
     .toArray();
   res.json(list);
 }));
+
+// Event CRUD routes (parameterized routes come after specific routes)
+router.post(
+  '/event',
+  adminWriteLimiter,
+  validate(createEventSchema),
+  ensureDomainExists,
+  asyncHandler(createEvent)
+);
+router.post('/event/:id/advance', adminWriteLimiter, validate(eventIdSchema), asyncHandler(advanceQueueManually));
+router.put(
+  '/event/:id',
+  adminWriteLimiter,
+  validate(updateEventSchema),
+  asyncHandler(updateEvent)
+);
+router.delete(
+  '/event/:id',
+  adminWriteLimiter,
+  validate(eventIdSchema),
+  asyncHandler(deleteEvent)
+);
 
 export default router;
 

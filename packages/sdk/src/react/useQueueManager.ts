@@ -77,8 +77,20 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
   const requestIdRef = useRef<string | null>(null); // Track request ID for deduplication
   const abortControllerRef = useRef<AbortController | null>(null); // Abort controller for request cancellation
 
-  const isWaiting = queueStatus?.state === 'waiting';
-  const isActive = queueStatus?.state === 'active';
+  // Local countdown for interval timer (timeRemaining) - for smooth UI countdown
+  const [localTimeRemaining, setLocalTimeRemaining] = useState<number | null>(null);
+
+  // Create display queue status with local countdown
+  const displayQueueStatus = useMemo(() => {
+    if (!queueStatus) return null;
+    return {
+      ...queueStatus,
+      timeRemaining: localTimeRemaining !== null ? localTimeRemaining : queueStatus.timeRemaining,
+    };
+  }, [queueStatus, localTimeRemaining]);
+
+  const isWaiting = displayQueueStatus?.state === 'waiting';
+  const isActive = displayQueueStatus?.state === 'active';
 
   // Format domain URL helper
   const eventDomain = event?.domain ?? '';
@@ -178,6 +190,15 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
         { signal: abortController.signal }
       );
       console.log('Join queue result:', result);
+      console.log('Join result data:', {
+        state: result.state,
+        position: result.position,
+        total: result.total,
+        timeRemaining: result.timeRemaining,
+        activeUsers: result.activeUsers,
+        waitingUsers: result.waitingUsers,
+        showWaitingTimer: result.showWaitingTimer,
+      });
 
       if (result?.success) {
         setHasJoined(true);
@@ -187,6 +208,26 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
           setShowModal(true);
         }
         waitDialogSetRef.current = true;
+
+        // Set initial queue status from join result - ensure all fields are set
+        const initialStatus: QueueStatus = {
+          state: result.state || 'waiting',
+          position: result.position ?? 0,
+          total: result.total ?? 0,
+          timeRemaining: result.timeRemaining ?? 0,
+          activeUsers: result.activeUsers ?? 0,
+          waitingUsers: result.waitingUsers ?? 0,
+          showWaitingTimer: result.showWaitingTimer ?? false,
+          waitingTimerDuration: result.waitingTimerDuration ?? 0,
+        };
+        console.log('Setting initial queue status:', initialStatus);
+        setQueueStatus(initialStatus);
+        
+        // Initialize local countdown timer from API response
+        if (result.timeRemaining !== undefined && result.timeRemaining !== null) {
+          setLocalTimeRemaining(result.timeRemaining);
+          console.log('Initialized localTimeRemaining:', result.timeRemaining);
+        }
 
         // Handle waiting timer if needed
         if (
@@ -218,6 +259,20 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
           setShowModal(true);
         }
         waitDialogSetRef.current = true;
+        
+        // Set initial queue status from legacy result
+        const initialStatus: QueueStatus = {
+          state: result.state || 'waiting',
+          position: result.position ?? 0,
+          total: result.total ?? 0,
+          timeRemaining: result.timeRemaining ?? 0,
+          activeUsers: result.activeUsers ?? 0,
+          waitingUsers: result.waitingUsers ?? 0,
+          showWaitingTimer: result.showWaitingTimer ?? false,
+          waitingTimerDuration: result.waitingTimerDuration ?? 0,
+        };
+        setQueueStatus(initialStatus);
+        
         setWaitDialog({
           open: true,
           duration: result.waitTime,
@@ -342,6 +397,15 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
 
   // Polling effect
   useEffect(() => {
+    // Stop polling if redirected
+    if (hasRedirected) {
+      if (pollingCleanupRef.current) {
+        pollingCleanupRef.current();
+        pollingCleanupRef.current = null;
+      }
+      return;
+    }
+    
     if (hasJoined && effectiveEventId && effectiveUserId) {
       if (pollingCleanupRef.current) {
         pollingCleanupRef.current();
@@ -351,6 +415,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
         effectiveEventId,
         effectiveUserId,
         (status) => {
+          console.log('Polling status update:', status);
           setQueueStatus(status);
           setError(null);
         },
@@ -371,11 +436,11 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
         pollingCleanupRef.current = null;
       }
     };
-  }, [hasJoined, effectiveEventId, effectiveUserId, pollInterval]);
+  }, [hasJoined, effectiveEventId, effectiveUserId, pollInterval, hasRedirected]);
 
   // Handle waiting timer countdown
   useEffect(() => {
-    if (!hasJoined || !queueStatus) {
+    if (!hasJoined || !displayQueueStatus) {
       return;
     }
 
@@ -388,18 +453,18 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
       return;
     }
 
-    if (queueStatus.state === 'active') {
+    if (displayQueueStatus.state === 'active') {
       setWaitDialog({ open: false, duration: 0, remaining: 0, message: '' });
       waitDialogSetRef.current = false;
       return;
     }
 
-    if (queueStatus.state === 'waiting') {
+    if (displayQueueStatus.state === 'waiting') {
       const showTimer =
-        queueStatus.showWaitingTimer && queueStatus.waitingTimerDuration;
+        displayQueueStatus.showWaitingTimer && displayQueueStatus.waitingTimerDuration;
 
       if (showTimer) {
-        const timerDuration = queueStatus.waitingTimerDuration || 45;
+        const timerDuration = displayQueueStatus.waitingTimerDuration || 45;
         setWaitDialog((prev) => {
           // Only update if not already set or if duration changed
           if (
@@ -412,7 +477,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
               open: true,
               duration: timerDuration,
               remaining: timerDuration,
-              message: `Entry limit exceeded. Please wait ${timerDuration} seconds. Position: ${queueStatus.position} of ${queueStatus.total}`,
+              message: `Entry limit exceeded. Please wait ${timerDuration} seconds. Position: ${displayQueueStatus.position ?? 0} of ${displayQueueStatus.total ?? 0}`,
             };
           }
           return prev;
@@ -430,7 +495,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
         }
       }
     }
-  }, [hasJoined, queueStatus, waitDialog.message, waitDialog.duration]);
+  }, [hasJoined, displayQueueStatus, waitDialog.message, waitDialog.duration]);
 
   // Timer countdown for waiting dialog
   useEffect(() => {
@@ -457,26 +522,99 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     return () => clearInterval(interval);
   }, [waitDialog.open, waitDialog.remaining, waitDialog.duration]);
 
-  // Redirect when user becomes active
+  // Sync local countdown with API value
+  useEffect(() => {
+    // Don't sync if we've already redirected - prevent timer restart
+    if (hasRedirected) {
+      return;
+    }
+    
+    if (queueStatus) {
+      // Sync local countdown with API value, but only update if API value is higher (to prevent jumping back)
+      if (localTimeRemaining === null) {
+        setLocalTimeRemaining(queueStatus.timeRemaining);
+      } else if (queueStatus.timeRemaining > localTimeRemaining + 2) {
+        // API value is significantly higher, sync to it (timer was reset)
+        setLocalTimeRemaining(queueStatus.timeRemaining);
+      } else if (queueStatus.timeRemaining === 0 && localTimeRemaining > 0) {
+        // API says timer is done, but local still counting - keep counting down
+        // Don't reset, let it count to 0
+      } else if (localTimeRemaining === 0) {
+        // Timer has reached 0, don't sync anymore - redirect will happen
+        return;
+      }
+    }
+  }, [queueStatus?.timeRemaining, localTimeRemaining, hasRedirected]);
+
+  // Countdown timer for interval - counts down every second
+  useEffect(() => {
+    // Stop countdown if redirected
+    if (hasRedirected) {
+      return;
+    }
+    
+    if (localTimeRemaining === null || localTimeRemaining <= 0) {
+      return;
+    }
+
+    const interval = setInterval(() => {
+      setLocalTimeRemaining((prev) => {
+        if (prev === null || prev <= 0) {
+          return 0;
+        }
+        const newValue = prev - 1;
+        return newValue;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [localTimeRemaining, hasRedirected]);
+
+  // Redirect logic:
+  // 1. If user is active and timeRemaining is 0 (entered directly, queue available) -> redirect immediately
+  // 2. If user is active and timeRemaining > 0 (queue was full, interval timer running) -> wait for timer to complete
   useEffect(() => {
     if ((event || redirectUrl) && isActive && !hasRedirected) {
-      setHasRedirected(true);
-
-      if (onActive && event) {
-        onActive(event);
-      }
-
-      const targetUrl = resolveRedirectTarget();
-      const triggerRedirect = () => {
-        if (onRedirect) {
-          onRedirect(targetUrl);
-        } else if (targetUrl && targetUrl !== '#') {
-          window.location.href = targetUrl;
+      // Get current time remaining value
+      const timeRemainingValue = localTimeRemaining ?? displayQueueStatus?.timeRemaining ?? -1;
+      
+      // If timeRemaining is 0 or less, redirect (either entered directly or interval completed)
+      if (timeRemainingValue <= 0) {
+        console.log('Redirecting user - interval completed or entered directly', {
+          timeRemainingValue,
+          localTimeRemaining,
+          displayTimeRemaining: displayQueueStatus?.timeRemaining,
+          state: displayQueueStatus?.state,
+        });
+        
+        // Mark as redirected immediately to prevent timer restart
+        setHasRedirected(true);
+        
+        // Stop polling immediately
+        if (pollingCleanupRef.current) {
+          pollingCleanupRef.current();
+          pollingCleanupRef.current = null;
         }
-      };
 
-      if (targetUrl && targetUrl !== '#') {
-        setTimeout(triggerRedirect, 1500);
+        if (onActive && event) {
+          onActive(event);
+        }
+
+        const targetUrl = resolveRedirectTarget();
+        const triggerRedirect = () => {
+          console.log('Redirecting to:', targetUrl);
+          if (onRedirect) {
+            onRedirect(targetUrl);
+          } else if (targetUrl && targetUrl !== '#') {
+            window.location.href = targetUrl;
+          }
+        };
+
+        if (targetUrl && targetUrl !== '#') {
+          // Small delay to show completion state (or immediate if entered directly)
+          const delay = timeRemainingValue === 0 ? 500 : 1000; // Faster redirect if entered directly
+          setTimeout(triggerRedirect, delay);
+        }
       }
     }
   }, [
@@ -487,6 +625,9 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     onRedirect,
     resolveRedirectTarget,
     redirectUrl,
+    localTimeRemaining,
+    displayQueueStatus?.timeRemaining,
+    displayQueueStatus?.state,
   ]);
 
   // Auto-join if enabled (only when all required props are available)
@@ -518,7 +659,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
 
   const state: QueueManagerState = useMemo(
     () => ({
-      queueStatus,
+      queueStatus: displayQueueStatus,
       loading,
       error,
       hasJoined,
@@ -529,7 +670,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
       waitDialog,
     }),
     [
-      queueStatus,
+      displayQueueStatus,
       loading,
       error,
       hasJoined,

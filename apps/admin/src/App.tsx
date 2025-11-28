@@ -129,11 +129,31 @@ function AdminApp() {
     try {
       const data = await sdk.getEvents();
       setEvents(data);
-      if (data.length > 0 && !selectedEvent) {
-        setSelectedEvent(data[0]);
+      if (data.length > 0) {
+        // If we have a selected event, check if it still exists
+        if (selectedEvent) {
+          const stillExists = data.find((e) => e._id === selectedEvent._id);
+          if (!stillExists) {
+            // Selected event was deleted, select the first one
+            setSelectedEvent(data[0]);
+          } else {
+            // Update selected event with latest data
+            setSelectedEvent(stillExists);
+          }
+        } else {
+          // No selected event, select the first one
+          setSelectedEvent(data[0]);
+        }
+      } else {
+        setSelectedEvent(null);
       }
     } catch (error) {
       console.error('Error loading events:', error);
+      setSnackbar({
+        open: true,
+        message: (error as Error).message || 'Failed to load events',
+        severity: 'error',
+      });
     }
   };
 
@@ -161,6 +181,7 @@ function AdminApp() {
       });
     } catch (error) {
       console.error('Failed to load queue data:', error);
+      // Don't show snackbar for queue data errors as they happen frequently during polling
     }
   }, []);
 
@@ -177,6 +198,14 @@ function AdminApp() {
         loadQueueData(selectedEvent._id);
       }, 2000);
       return () => clearInterval(interval);
+    } else {
+      // Clear queue data when no event is selected
+      setQueueData({
+        active: [],
+        waiting: [],
+        remaining: 0,
+      });
+      setHistory([]);
     }
   }, [selectedEvent, loadQueueData]);
 
@@ -185,10 +214,20 @@ function AdminApp() {
     setIsLoading(true);
     try {
       await sdk.startQueue(selectedEvent._id);
+      setSnackbar({
+        open: true,
+        message: 'Queue started successfully!',
+        severity: 'success',
+      });
       loadEvents();
       loadQueueData(selectedEvent._id);
     } catch (error) {
       console.error('Error starting queue:', error);
+      setSnackbar({
+        open: true,
+        message: (error as Error).message || 'Failed to start queue',
+        severity: 'error',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -199,10 +238,20 @@ function AdminApp() {
     setIsLoading(true);
     try {
       await sdk.stopQueue(selectedEvent._id);
+      setSnackbar({
+        open: true,
+        message: 'Queue stopped successfully!',
+        severity: 'success',
+      });
       loadEvents();
       loadQueueData(selectedEvent._id);
     } catch (error) {
       console.error('Error stopping queue:', error);
+      setSnackbar({
+        open: true,
+        message: (error as Error).message || 'Failed to stop queue',
+        severity: 'error',
+      });
     } finally {
       setIsLoading(false);
     }
@@ -754,6 +803,15 @@ function AdminApp() {
                     </TableCell>
                   </TableRow>
                 ))}
+                {events.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary">
+                        No events found. Create your first event to get started.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </TableContainer>
@@ -775,9 +833,18 @@ function AdminApp() {
         <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>
           Events Management
         </Typography>
-        <Button variant="contained" startIcon={<EventIcon />}>
-          Create Event
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setCreateDialogOpen(true)}
+          >
+            Create Event
+          </Button>
+          <IconButton onClick={loadEvents}>
+            <RefreshIcon />
+          </IconButton>
+        </Stack>
       </Box>
 
       {selectedEvent && (
@@ -893,13 +960,40 @@ function AdminApp() {
                     </TableCell>
                     <TableCell>{event.queueLimit}</TableCell>
                     <TableCell>{event.intervalSec}s</TableCell>
-                    <TableCell>
-                      <IconButton size="small">
-                        <SettingsIcon fontSize="small" />
-                      </IconButton>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
+                      <Stack direction="row" spacing={0.5}>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setEditEvent(event);
+                            setEditDialogOpen(true);
+                          }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setEventToDelete(event);
+                            setDeleteDialogOpen(true);
+                          }}
+                          color="error"
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
                     </TableCell>
                   </TableRow>
                 ))}
+                {events.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary">
+                        No events found. Create your first event to get started.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </TableContainer>
@@ -917,7 +1011,21 @@ function AdminApp() {
         Queue Users
       </Typography>
 
-      <Grid container spacing={3}>
+      {!selectedEvent ? (
+        <Card>
+          <CardContent>
+            <Box sx={{ textAlign: 'center', py: 4 }}>
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                No Event Selected
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Please select an event from the Events page to view queue users.
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
+      ) : (
+        <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
           <Card>
             <CardContent>
@@ -937,15 +1045,25 @@ function AdminApp() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {queueData.active.map((userId, index) => (
-                      <TableRow key={userId}>
-                        <TableCell>#{index + 1}</TableCell>
-                        <TableCell>{userId}</TableCell>
-                        <TableCell>
-                          <Chip label="Active" color="success" size="small" />
+                    {queueData.active.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            No active users
+                          </Typography>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      queueData.active.map((userId, index) => (
+                        <TableRow key={userId}>
+                          <TableCell>#{index + 1}</TableCell>
+                          <TableCell>{userId}</TableCell>
+                          <TableCell>
+                            <Chip label="Active" color="success" size="small" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -972,17 +1090,27 @@ function AdminApp() {
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {queueData.waiting.map((userId, index) => (
-                      <TableRow key={userId}>
-                        <TableCell>
-                          #{queueData.active.length + index + 1}
-                        </TableCell>
-                        <TableCell>{userId}</TableCell>
-                        <TableCell>
-                          <Chip label="Waiting" color="warning" size="small" />
+                    {queueData.waiting.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} align="center" sx={{ py: 3 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            No waiting users
+                          </Typography>
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : (
+                      queueData.waiting.map((userId, index) => (
+                        <TableRow key={userId}>
+                          <TableCell>
+                            #{queueData.active.length + index + 1}
+                          </TableCell>
+                          <TableCell>{userId}</TableCell>
+                          <TableCell>
+                            <Chip label="Waiting" color="warning" size="small" />
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -990,6 +1118,7 @@ function AdminApp() {
           </Card>
         </Grid>
       </Grid>
+      )}
     </Box>
   );
 

@@ -64,12 +64,35 @@ function AdminApp() {
         try {
             const data = await sdk.getEvents();
             setEvents(data);
-            if (data.length > 0 && !selectedEvent) {
-                setSelectedEvent(data[0]);
+            if (data.length > 0) {
+                // If we have a selected event, check if it still exists
+                if (selectedEvent) {
+                    const stillExists = data.find((e) => e._id === selectedEvent._id);
+                    if (!stillExists) {
+                        // Selected event was deleted, select the first one
+                        setSelectedEvent(data[0]);
+                    }
+                    else {
+                        // Update selected event with latest data
+                        setSelectedEvent(stillExists);
+                    }
+                }
+                else {
+                    // No selected event, select the first one
+                    setSelectedEvent(data[0]);
+                }
+            }
+            else {
+                setSelectedEvent(null);
             }
         }
         catch (error) {
             console.error('Error loading events:', error);
+            setSnackbar({
+                open: true,
+                message: error.message || 'Failed to load events',
+                severity: 'error',
+            });
         }
     };
     const loadQueueData = useCallback(async (eventId) => {
@@ -97,6 +120,7 @@ function AdminApp() {
         }
         catch (error) {
             console.error('Failed to load queue data:', error);
+            // Don't show snackbar for queue data errors as they happen frequently during polling
         }
     }, []);
     useEffect(() => {
@@ -112,6 +136,15 @@ function AdminApp() {
             }, 2000);
             return () => clearInterval(interval);
         }
+        else {
+            // Clear queue data when no event is selected
+            setQueueData({
+                active: [],
+                waiting: [],
+                remaining: 0,
+            });
+            setHistory([]);
+        }
     }, [selectedEvent, loadQueueData]);
     const startQueue = async () => {
         if (!selectedEvent)
@@ -119,11 +152,21 @@ function AdminApp() {
         setIsLoading(true);
         try {
             await sdk.startQueue(selectedEvent._id);
+            setSnackbar({
+                open: true,
+                message: 'Queue started successfully!',
+                severity: 'success',
+            });
             loadEvents();
             loadQueueData(selectedEvent._id);
         }
         catch (error) {
             console.error('Error starting queue:', error);
+            setSnackbar({
+                open: true,
+                message: error.message || 'Failed to start queue',
+                severity: 'error',
+            });
         }
         finally {
             setIsLoading(false);
@@ -135,11 +178,21 @@ function AdminApp() {
         setIsLoading(true);
         try {
             await sdk.stopQueue(selectedEvent._id);
+            setSnackbar({
+                open: true,
+                message: 'Queue stopped successfully!',
+                severity: 'success',
+            });
             loadEvents();
             loadQueueData(selectedEvent._id);
         }
         catch (error) {
             console.error('Error stopping queue:', error);
+            setSnackbar({
+                open: true,
+                message: error.message || 'Failed to stop queue',
+                severity: 'error',
+            });
         }
         finally {
             setIsLoading(false);
@@ -327,24 +380,24 @@ function AdminApp() {
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
                                 mb: 3,
-                            }, children: _jsx(Typography, { variant: "h6", sx: { fontWeight: 600 }, children: "All Events" }) }), _jsx(TableContainer, { children: _jsxs(Table, { children: [_jsx(TableHead, { children: _jsxs(TableRow, { sx: { bgcolor: alpha('#6366f1', 0.05) }, children: [_jsx(TableCell, { sx: { fontWeight: 600 }, children: "Name" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Domain" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Status" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Queue Limit" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Interval" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Actions" })] }) }), _jsx(TableBody, { children: events.map((event) => (_jsxs(TableRow, { hover: true, onClick: () => setSelectedEvent(event), sx: {
-                                                cursor: 'pointer',
-                                                bgcolor: selectedEvent?._id === event._id
-                                                    ? alpha('#1e40af', 0.05)
-                                                    : 'inherit',
-                                            }, children: [_jsx(TableCell, { children: _jsx(Typography, { variant: "body2", sx: { fontWeight: 600 }, children: event.name }) }), _jsx(TableCell, { children: event.domain }), _jsx(TableCell, { children: _jsx(Chip, { label: event.isActive ? 'Active' : 'Inactive', color: event.isActive ? 'success' : 'default', size: "small", sx: { fontWeight: 600 } }) }), _jsx(TableCell, { children: event.queueLimit }), _jsxs(TableCell, { children: [event.intervalSec, "s"] }), _jsx(TableCell, { onClick: (e) => e.stopPropagation(), children: _jsxs(Stack, { direction: "row", spacing: 0.5, children: [_jsx(IconButton, { size: "small", onClick: () => {
-                                                                    setEditEvent(event);
-                                                                    setEditDialogOpen(true);
-                                                                }, children: _jsx(EditIcon, { fontSize: "small" }) }), _jsx(IconButton, { size: "small", onClick: () => {
-                                                                    setEventToDelete(event);
-                                                                    setDeleteDialogOpen(true);
-                                                                }, color: "error", children: _jsx(DeleteIcon, { fontSize: "small" }) })] }) })] }, event._id))) })] }) })] }) })] }));
+                            }, children: _jsx(Typography, { variant: "h6", sx: { fontWeight: 600 }, children: "All Events" }) }), _jsx(TableContainer, { children: _jsxs(Table, { children: [_jsx(TableHead, { children: _jsxs(TableRow, { sx: { bgcolor: alpha('#6366f1', 0.05) }, children: [_jsx(TableCell, { sx: { fontWeight: 600 }, children: "Name" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Domain" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Status" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Queue Limit" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Interval" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Actions" })] }) }), _jsxs(TableBody, { children: [events.map((event) => (_jsxs(TableRow, { hover: true, onClick: () => setSelectedEvent(event), sx: {
+                                                    cursor: 'pointer',
+                                                    bgcolor: selectedEvent?._id === event._id
+                                                        ? alpha('#1e40af', 0.05)
+                                                        : 'inherit',
+                                                }, children: [_jsx(TableCell, { children: _jsx(Typography, { variant: "body2", sx: { fontWeight: 600 }, children: event.name }) }), _jsx(TableCell, { children: event.domain }), _jsx(TableCell, { children: _jsx(Chip, { label: event.isActive ? 'Active' : 'Inactive', color: event.isActive ? 'success' : 'default', size: "small", sx: { fontWeight: 600 } }) }), _jsx(TableCell, { children: event.queueLimit }), _jsxs(TableCell, { children: [event.intervalSec, "s"] }), _jsx(TableCell, { onClick: (e) => e.stopPropagation(), children: _jsxs(Stack, { direction: "row", spacing: 0.5, children: [_jsx(IconButton, { size: "small", onClick: () => {
+                                                                        setEditEvent(event);
+                                                                        setEditDialogOpen(true);
+                                                                    }, children: _jsx(EditIcon, { fontSize: "small" }) }), _jsx(IconButton, { size: "small", onClick: () => {
+                                                                        setEventToDelete(event);
+                                                                        setDeleteDialogOpen(true);
+                                                                    }, color: "error", children: _jsx(DeleteIcon, { fontSize: "small" }) })] }) })] }, event._id))), events.length === 0 && (_jsx(TableRow, { children: _jsx(TableCell, { colSpan: 6, align: "center", sx: { py: 4 }, children: _jsx(Typography, { color: "text.secondary", children: "No events found. Create your first event to get started." }) }) }))] })] }) })] }) })] }));
     const renderEvents = () => (_jsxs(Box, { children: [_jsxs(Box, { sx: {
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     mb: 4,
-                }, children: [_jsx(Typography, { variant: "h4", sx: { fontWeight: 700, color: '#1e293b' }, children: "Events Management" }), _jsx(Button, { variant: "contained", startIcon: _jsx(EventIcon, {}), children: "Create Event" })] }), selectedEvent && (_jsx(Card, { sx: { mb: 3 }, children: _jsxs(CardContent, { children: [_jsxs(Box, { sx: {
+                }, children: [_jsx(Typography, { variant: "h4", sx: { fontWeight: 700, color: '#1e293b' }, children: "Events Management" }), _jsxs(Stack, { direction: "row", spacing: 1, children: [_jsx(Button, { variant: "contained", startIcon: _jsx(AddIcon, {}), onClick: () => setCreateDialogOpen(true), children: "Create Event" }), _jsx(IconButton, { onClick: loadEvents, children: _jsx(RefreshIcon, {}) })] })] }), selectedEvent && (_jsx(Card, { sx: { mb: 3 }, children: _jsxs(CardContent, { children: [_jsxs(Box, { sx: {
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
@@ -354,13 +407,19 @@ function AdminApp() {
                                         justifyContent: 'space-between',
                                         mb: 1,
                                     }, children: [_jsx(Typography, { variant: "body2", children: "Time Remaining" }), _jsxs(Typography, { variant: "body2", sx: { fontWeight: 600 }, children: [Math.floor(queueData.remaining / 60), ":", (queueData.remaining % 60).toString().padStart(2, '0')] })] }), _jsx(LinearProgress, { variant: "determinate", value: (queueData.remaining / (selectedEvent.intervalSec || 30)) *
-                                        100, sx: { height: 8, borderRadius: 4 } })] }))] }) })), _jsx(Card, { children: _jsx(CardContent, { children: _jsx(TableContainer, { children: _jsxs(Table, { children: [_jsx(TableHead, { children: _jsxs(TableRow, { sx: { bgcolor: alpha('#6366f1', 0.05) }, children: [_jsx(TableCell, { sx: { fontWeight: 600 }, children: "Name" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Domain" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Status" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Queue Limit" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Interval" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Actions" })] }) }), _jsx(TableBody, { children: events.map((event) => (_jsxs(TableRow, { hover: true, onClick: () => setSelectedEvent(event), sx: {
-                                            cursor: 'pointer',
-                                            bgcolor: selectedEvent?._id === event._id
-                                                ? alpha('#6366f1', 0.05)
-                                                : 'inherit',
-                                        }, children: [_jsx(TableCell, { children: _jsx(Typography, { variant: "body2", sx: { fontWeight: 600 }, children: event.name }) }), _jsx(TableCell, { children: event.domain }), _jsx(TableCell, { children: _jsx(Chip, { label: event.isActive ? 'Active' : 'Inactive', color: event.isActive ? 'success' : 'default', size: "small", sx: { fontWeight: 600 } }) }), _jsx(TableCell, { children: event.queueLimit }), _jsxs(TableCell, { children: [event.intervalSec, "s"] }), _jsx(TableCell, { children: _jsx(IconButton, { size: "small", children: _jsx(SettingsIcon, { fontSize: "small" }) }) })] }, event._id))) })] }) }) }) })] }));
-    const renderUsers = () => (_jsxs(Box, { children: [_jsx(Typography, { variant: "h4", sx: { fontWeight: 700, mb: 4, color: '#1e293b' }, children: "Queue Users" }), _jsxs(Grid, { container: true, spacing: 3, children: [_jsx(Grid, { item: true, xs: 12, md: 6, children: _jsx(Card, { children: _jsxs(CardContent, { children: [_jsxs(Box, { sx: { display: 'flex', alignItems: 'center', mb: 3 }, children: [_jsx(CheckCircleIcon, { sx: { color: '#10b981', mr: 1 } }), _jsxs(Typography, { variant: "h6", sx: { fontWeight: 600 }, children: ["Active Users (", queueData.active.length, ")"] })] }), _jsx(TableContainer, { children: _jsxs(Table, { size: "small", children: [_jsx(TableHead, { children: _jsxs(TableRow, { sx: { bgcolor: alpha('#10b981', 0.1) }, children: [_jsx(TableCell, { sx: { fontWeight: 600 }, children: "Position" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "User ID" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Status" })] }) }), _jsx(TableBody, { children: queueData.active.map((userId, index) => (_jsxs(TableRow, { children: [_jsxs(TableCell, { children: ["#", index + 1] }), _jsx(TableCell, { children: userId }), _jsx(TableCell, { children: _jsx(Chip, { label: "Active", color: "success", size: "small" }) })] }, userId))) })] }) })] }) }) }), _jsx(Grid, { item: true, xs: 12, md: 6, children: _jsx(Card, { children: _jsxs(CardContent, { children: [_jsxs(Box, { sx: { display: 'flex', alignItems: 'center', mb: 3 }, children: [_jsx(ScheduleIcon, { sx: { color: '#f59e0b', mr: 1 } }), _jsxs(Typography, { variant: "h6", sx: { fontWeight: 600 }, children: ["Waiting Users (", queueData.waiting.length, ")"] })] }), _jsx(TableContainer, { children: _jsxs(Table, { size: "small", children: [_jsx(TableHead, { children: _jsxs(TableRow, { sx: { bgcolor: alpha('#f59e0b', 0.1) }, children: [_jsx(TableCell, { sx: { fontWeight: 600 }, children: "Position" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "User ID" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Status" })] }) }), _jsx(TableBody, { children: queueData.waiting.map((userId, index) => (_jsxs(TableRow, { children: [_jsxs(TableCell, { children: ["#", queueData.active.length + index + 1] }), _jsx(TableCell, { children: userId }), _jsx(TableCell, { children: _jsx(Chip, { label: "Waiting", color: "warning", size: "small" }) })] }, userId))) })] }) })] }) }) })] })] }));
+                                        100, sx: { height: 8, borderRadius: 4 } })] }))] }) })), _jsx(Card, { children: _jsx(CardContent, { children: _jsx(TableContainer, { children: _jsxs(Table, { children: [_jsx(TableHead, { children: _jsxs(TableRow, { sx: { bgcolor: alpha('#6366f1', 0.05) }, children: [_jsx(TableCell, { sx: { fontWeight: 600 }, children: "Name" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Domain" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Status" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Queue Limit" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Interval" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Actions" })] }) }), _jsxs(TableBody, { children: [events.map((event) => (_jsxs(TableRow, { hover: true, onClick: () => setSelectedEvent(event), sx: {
+                                                cursor: 'pointer',
+                                                bgcolor: selectedEvent?._id === event._id
+                                                    ? alpha('#6366f1', 0.05)
+                                                    : 'inherit',
+                                            }, children: [_jsx(TableCell, { children: _jsx(Typography, { variant: "body2", sx: { fontWeight: 600 }, children: event.name }) }), _jsx(TableCell, { children: event.domain }), _jsx(TableCell, { children: _jsx(Chip, { label: event.isActive ? 'Active' : 'Inactive', color: event.isActive ? 'success' : 'default', size: "small", sx: { fontWeight: 600 } }) }), _jsx(TableCell, { children: event.queueLimit }), _jsxs(TableCell, { children: [event.intervalSec, "s"] }), _jsx(TableCell, { onClick: (e) => e.stopPropagation(), children: _jsxs(Stack, { direction: "row", spacing: 0.5, children: [_jsx(IconButton, { size: "small", onClick: () => {
+                                                                    setEditEvent(event);
+                                                                    setEditDialogOpen(true);
+                                                                }, children: _jsx(EditIcon, { fontSize: "small" }) }), _jsx(IconButton, { size: "small", onClick: () => {
+                                                                    setEventToDelete(event);
+                                                                    setDeleteDialogOpen(true);
+                                                                }, color: "error", children: _jsx(DeleteIcon, { fontSize: "small" }) })] }) })] }, event._id))), events.length === 0 && (_jsx(TableRow, { children: _jsx(TableCell, { colSpan: 6, align: "center", sx: { py: 4 }, children: _jsx(Typography, { color: "text.secondary", children: "No events found. Create your first event to get started." }) }) }))] })] }) }) }) })] }));
+    const renderUsers = () => (_jsxs(Box, { children: [_jsx(Typography, { variant: "h4", sx: { fontWeight: 700, mb: 4, color: '#1e293b' }, children: "Queue Users" }), !selectedEvent ? (_jsx(Card, { children: _jsx(CardContent, { children: _jsxs(Box, { sx: { textAlign: 'center', py: 4 }, children: [_jsx(Typography, { variant: "h6", color: "text.secondary", gutterBottom: true, children: "No Event Selected" }), _jsx(Typography, { variant: "body2", color: "text.secondary", children: "Please select an event from the Events page to view queue users." })] }) }) })) : (_jsxs(Grid, { container: true, spacing: 3, children: [_jsx(Grid, { item: true, xs: 12, md: 6, children: _jsx(Card, { children: _jsxs(CardContent, { children: [_jsxs(Box, { sx: { display: 'flex', alignItems: 'center', mb: 3 }, children: [_jsx(CheckCircleIcon, { sx: { color: '#10b981', mr: 1 } }), _jsxs(Typography, { variant: "h6", sx: { fontWeight: 600 }, children: ["Active Users (", queueData.active.length, ")"] })] }), _jsx(TableContainer, { children: _jsxs(Table, { size: "small", children: [_jsx(TableHead, { children: _jsxs(TableRow, { sx: { bgcolor: alpha('#10b981', 0.1) }, children: [_jsx(TableCell, { sx: { fontWeight: 600 }, children: "Position" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "User ID" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Status" })] }) }), _jsx(TableBody, { children: queueData.active.length === 0 ? (_jsx(TableRow, { children: _jsx(TableCell, { colSpan: 3, align: "center", sx: { py: 3 }, children: _jsx(Typography, { variant: "body2", color: "text.secondary", children: "No active users" }) }) })) : (queueData.active.map((userId, index) => (_jsxs(TableRow, { children: [_jsxs(TableCell, { children: ["#", index + 1] }), _jsx(TableCell, { children: userId }), _jsx(TableCell, { children: _jsx(Chip, { label: "Active", color: "success", size: "small" }) })] }, userId)))) })] }) })] }) }) }), _jsx(Grid, { item: true, xs: 12, md: 6, children: _jsx(Card, { children: _jsxs(CardContent, { children: [_jsxs(Box, { sx: { display: 'flex', alignItems: 'center', mb: 3 }, children: [_jsx(ScheduleIcon, { sx: { color: '#f59e0b', mr: 1 } }), _jsxs(Typography, { variant: "h6", sx: { fontWeight: 600 }, children: ["Waiting Users (", queueData.waiting.length, ")"] })] }), _jsx(TableContainer, { children: _jsxs(Table, { size: "small", children: [_jsx(TableHead, { children: _jsxs(TableRow, { sx: { bgcolor: alpha('#f59e0b', 0.1) }, children: [_jsx(TableCell, { sx: { fontWeight: 600 }, children: "Position" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "User ID" }), _jsx(TableCell, { sx: { fontWeight: 600 }, children: "Status" })] }) }), _jsx(TableBody, { children: queueData.waiting.length === 0 ? (_jsx(TableRow, { children: _jsx(TableCell, { colSpan: 3, align: "center", sx: { py: 3 }, children: _jsx(Typography, { variant: "body2", color: "text.secondary", children: "No waiting users" }) }) })) : (queueData.waiting.map((userId, index) => (_jsxs(TableRow, { children: [_jsxs(TableCell, { children: ["#", queueData.active.length + index + 1] }), _jsx(TableCell, { children: userId }), _jsx(TableCell, { children: _jsx(Chip, { label: "Waiting", color: "warning", size: "small" }) })] }, userId)))) })] }) })] }) }) })] }))] }));
     const renderAnalytics = () => (_jsxs(Box, { children: [_jsx(Typography, { variant: "h4", sx: { fontWeight: 700, mb: 4, color: '#1e293b' }, children: "Analytics" }), _jsx(Grid, { container: true, spacing: 3, children: _jsx(Grid, { item: true, xs: 12, children: _jsx(Card, { children: _jsxs(CardContent, { children: [_jsx(Typography, { variant: "h6", sx: { fontWeight: 600, mb: 3 }, children: "Queue Performance" }), history.length > 0 ? (_jsx(LineChart, { width: 900, height: 400, series: [
                                         {
                                             data: history.map((h) => h.active),

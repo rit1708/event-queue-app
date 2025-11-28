@@ -56,43 +56,90 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
     );
   }
 
-  // Check current queue status
-  const status = await getStatus(redis, eventId, userId);
+  // Check entry window availability (Entry Timer Logic)
+  const k = keys(eventId);
 
-  // If user is already active, return active status
-  if (status.state === 'active') {
+  // Check if user is actually in the queue (active or waiting)
+  const [activeList, waitingList, ttl, activeLen, waitingLen] =
+    await Promise.all([
+      redis.lrange(k.active, 0, -1),
+      redis.lrange(k.waiting, 0, -1),
+      redis.ttl(k.timer),
+      redis.llen(k.active),
+      redis.llen(k.waiting),
+    ]);
+
+  const userInActive = activeList.indexOf(userId) !== -1;
+  const userInWaiting = waitingList.indexOf(userId) !== -1;
+  const userInQueue = userInActive || userInWaiting;
+
+  // If user is already active, return active status with all fields
+  if (userInActive) {
+    const status = await getStatus(redis, eventId, userId);
     res.json({
       success: true,
       status: 'active',
       state: 'active',
-      ...status,
+      position: status.position ?? 0,
+      total: activeLen + waitingLen,
+      timeRemaining: Math.max(0, ttl),
+      activeUsers: activeLen,
+      waitingUsers: waitingLen,
       showWaitingTimer: false,
     });
     return;
   }
-
-  // Check entry window availability (Entry Timer Logic)
-  const k = keys(eventId);
-  const [ttl, activeLen, waitingLen] = await Promise.all([
-    redis.ttl(k.timer),
-    redis.llen(k.active),
-    redis.llen(k.waiting),
-  ]);
 
   const entryWindowActive = ttl > 0; // Entry timer is running
   const hasAvailableSlots = activeLen < event.queueLimit; // Not at capacity
   const canEnterDirectly = !entryWindowActive || hasAvailableSlots; // Can enter if timer expired OR slots available
 
   // If user is not in queue and can enter directly
-  if (status.state !== 'waiting' && canEnterDirectly) {
+  if (!userInQueue && canEnterDirectly) {
     // Add user directly to active queue
     await redis.sadd(k.userset, userId);
     await redis.rpush(k.active, userId);
 
-    // If this fills the queue or timer was expired, start/refresh entry timer
-    const newActiveLen = activeLen + 1;
-    if (newActiveLen >= event.queueLimit || !entryWindowActive) {
+    // Get updated status
+    const updatedStatus = await getStatus(redis, eventId, userId);
+    const [finalTtl, finalActiveLen, finalWaitingLen] = await Promise.all([
+      redis.ttl(k.timer),
+      redis.llen(k.active),
+      redis.llen(k.waiting),
+    ]);
+
+    // If this fills the queue, start/refresh entry timer
+    const newActiveLen = finalActiveLen;
+    if (newActiveLen >= event.queueLimit) {
       await redis.set(k.timer, '1', 'EX', event.intervalSec);
+      // User entered when queue was available, but now it's full
+      // They need to wait for the interval timer to complete
+      const updatedTtl = await redis.ttl(k.timer);
+      res.json({
+        success: true,
+        status: 'active',
+        state: 'active',
+        position: updatedStatus.position ?? 0,
+        total: updatedStatus.total ?? finalActiveLen + finalWaitingLen,
+        timeRemaining: Math.max(0, updatedTtl), // Show interval timer
+        activeUsers: finalActiveLen,
+        waitingUsers: finalWaitingLen,
+        showWaitingTimer: false,
+      });
+    } else {
+      // Queue still has slots - user can enter immediately, no timer needed
+      // Set timeRemaining to 0 so redirect happens immediately
+      res.json({
+        success: true,
+        status: 'active',
+        state: 'active',
+        position: updatedStatus.position ?? 0,
+        total: updatedStatus.total ?? finalActiveLen + finalWaitingLen,
+        timeRemaining: 0, // No timer - redirect immediately
+        activeUsers: finalActiveLen,
+        waitingUsers: finalWaitingLen,
+        showWaitingTimer: false,
+      });
     }
 
     // Log entry to Mongo
@@ -102,30 +149,32 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
         .insertOne({ eventId, userId, enteredAt: new Date() });
     } catch {}
 
-    // Get updated status
-    const updatedStatus = await getStatus(redis, eventId, userId);
-    res.json({
-      success: true,
-      status: 'active',
-      state: 'active',
-      ...updatedStatus,
-      showWaitingTimer: false, // No waiting timer needed - entered directly
-    });
     return;
   }
 
   // If user is not in queue but cannot enter directly (entry window full)
-  if (status.state !== 'waiting' && !canEnterDirectly) {
+  if (!userInQueue && !canEnterDirectly) {
     // Add user to waiting queue
     await enqueueUser(redis, eventId, userId);
 
     // Get updated status
     const updatedStatus = await getStatus(redis, eventId, userId);
+    const [finalTtl, finalActiveLen, finalWaitingLen] = await Promise.all([
+      redis.ttl(k.timer),
+      redis.llen(k.active),
+      redis.llen(k.waiting),
+    ]);
+
+    // Always use direct Redis counts for accuracy
     res.json({
       success: true,
       status: 'waiting',
       state: 'waiting',
-      ...updatedStatus,
+      position: updatedStatus.position ?? 0,
+      total: finalActiveLen + finalWaitingLen,
+      timeRemaining: Math.max(0, finalTtl),
+      activeUsers: finalActiveLen,
+      waitingUsers: finalWaitingLen,
       showWaitingTimer: true, // Show 45-second waiting timer
       waitingTimerDuration: 45, // 45 seconds
     });
@@ -133,7 +182,7 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
   }
 
   // If user is already in waiting queue
-  if (status.state === 'waiting') {
+  if (userInWaiting) {
     // Check if they can be moved to active now
     await advanceQueue(redis, eventId, event.queueLimit, event.intervalSec);
     const updatedStatus = await getStatus(redis, eventId, userId);
@@ -149,11 +198,22 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
     const shouldShowTimer =
       updatedStatus.state === 'waiting' && entryWindowFull;
 
+    const [finalTtl3, finalActiveLen3, finalWaitingLen3] = await Promise.all([
+      redis.ttl(k.timer),
+      redis.llen(k.active),
+      redis.llen(k.waiting),
+    ]);
+
+    // Always use direct Redis counts for accuracy
     res.json({
       success: true,
       status: updatedStatus.state,
       state: updatedStatus.state,
-      ...updatedStatus,
+      position: updatedStatus.position ?? 0,
+      total: finalActiveLen3 + finalWaitingLen3,
+      timeRemaining: Math.max(0, finalTtl3),
+      activeUsers: finalActiveLen3,
+      waitingUsers: finalWaitingLen3,
       showWaitingTimer: shouldShowTimer,
       waitingTimerDuration: shouldShowTimer ? 45 : 0,
     });
@@ -164,11 +224,22 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
   await enqueueUser(redis, eventId, userId);
   await advanceQueue(redis, eventId, event.queueLimit, event.intervalSec);
   const updatedStatus = await getStatus(redis, eventId, userId);
+  const [finalTtl, finalActiveLen, finalWaitingLen] = await Promise.all([
+    redis.ttl(k.timer),
+    redis.llen(k.active),
+    redis.llen(k.waiting),
+  ]);
+
+  // Always use direct Redis counts for accuracy
   res.json({
     success: true,
     status: updatedStatus.state,
     state: updatedStatus.state,
-    ...updatedStatus,
+    position: updatedStatus.position ?? 0,
+    total: finalActiveLen + finalWaitingLen,
+    timeRemaining: Math.max(0, finalTtl),
+    activeUsers: finalActiveLen,
+    waitingUsers: finalWaitingLen,
     showWaitingTimer: false,
   });
 };
@@ -211,15 +282,30 @@ export const getQueueStatus = async (
   // Determine if waiting timer should be shown
   // Show timer only if user is waiting AND entry window is active and at capacity
   const k = keys(eventId);
-  const [ttl, activeLen] = await Promise.all([
+  const [ttl, activeLen, waitingLen] = await Promise.all([
     redis.ttl(k.timer),
     redis.llen(k.active),
+    redis.llen(k.waiting),
   ]);
   const entryWindowFull = ttl > 0 && activeLen >= event.queueLimit;
   const shouldShowTimer = status.state === 'waiting' && entryWindowFull;
 
+  // Ensure timeRemaining is always accurate - use TTL from Redis
+  const finalTimeRemaining = Math.max(0, ttl);
+
+  // Always use the actual Redis counts to ensure accuracy
+  const finalActiveUsers = activeLen;
+  const finalWaitingUsers = waitingLen;
+  const finalTotal = finalActiveUsers + finalWaitingUsers;
+
   res.json({
-    ...status,
+    state: status.state,
+    position:
+      status.position ?? (status.state === 'active' ? 0 : finalWaitingUsers),
+    total: status.total ?? finalTotal,
+    timeRemaining: finalTimeRemaining,
+    activeUsers: finalActiveUsers,
+    waitingUsers: finalWaitingUsers,
     showWaitingTimer: shouldShowTimer,
     waitingTimerDuration: shouldShowTimer ? 45 : 0,
   });
