@@ -104,7 +104,7 @@ export const updateEvent = async (
     throw new NotFoundError('Event', id);
   }
 
-  res.json({ success: true });
+  res.json({ ok: true });
 };
 
 export const deleteEvent = async (
@@ -122,6 +122,6 @@ export const deleteEvent = async (
     throw new NotFoundError('Event', id);
   }
 
-  res.json({ success: true });
+  res.json({ ok: true });
 };
 

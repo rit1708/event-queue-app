@@ -194,7 +194,7 @@ export function QueueJoinModal({
               Join Queue
             </Button>
           </Box>
-        ) : queueStatus && (isWaiting || isActive) ? (
+        ) : queueStatus || hasJoined ? (
           <>
             <Box sx={{ mb: 3 }}>
               {isActive ? (
@@ -205,128 +205,179 @@ export function QueueJoinModal({
               <Typography variant="h5" fontWeight="bold" gutterBottom>
                 {isActive
                   ? "Welcome! You're now in the queue."
-                  : `Position: ${queueStatus.position} of ${queueStatus.total}`}
+                  : `Position: ${queueStatus?.position ?? 0} of ${queueStatus?.total ?? 0}`}
               </Typography>
-              <Chip
-                label={isActive ? 'Active' : `${queueStatus.waitingUsers} waiting`}
-                color={isActive ? 'success' : 'warning'}
-                sx={{ mt: 1, fontWeight: 600 }}
-              />
+              {!isActive && (
+                <Chip
+                  label={`${queueStatus?.waitingUsers ?? 0} waiting`}
+                  color="warning"
+                  sx={{ mt: 1, fontWeight: 600 }}
+                />
+              )}
+              {isActive && (
+                <Chip
+                  label="Active"
+                  color="success"
+                  sx={{ mt: 1, fontWeight: 600 }}
+                />
+              )}
             </Box>
 
-            {/* 45-second Waiting Timer - Only shown when entry limit is exceeded */}
-            {isWaiting &&
-              queueStatus.showWaitingTimer &&
-              waitDialog.open &&
-              waitDialog.remaining > 0 && (
-                <Box sx={{ mb: 3 }}>
-                  <Typography
-                    variant="h3"
-                    align="center"
-                    sx={{ fontWeight: 700, mb: 1, color: 'warning.main' }}
-                  >
-                    {waitDialog.remaining}s
+            {/* Active and Waiting Users - Always show prominently */}
+            <Box sx={{ mb: 3, p: 2, bgcolor: 'background.paper', borderRadius: 2, border: '1px solid', borderColor: 'divider' }}>
+              <Stack spacing={2}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body1" fontWeight={600} color="text.primary">
+                    Active Users
                   </Typography>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 1,
-                      mb: 2,
-                    }}
-                  >
-                    <AccessTimeIcon fontSize="small" color="action" />
-                    <Typography variant="body2" color="text.secondary">
-                      Waiting timer - Entry limit exceeded
-                    </Typography>
-                  </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={waitProgress}
-                    sx={{ height: 8, borderRadius: 4 }}
-                  />
-                  {queueStatus.total > 0 && (
-                    <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontWeight: 600 }}>
-                      Your position: {queueStatus.position} / {queueStatus.total}
-                    </Typography>
-                  )}
+                  <Typography variant="h6" fontWeight="bold" color="success.main">
+                    {queueStatus?.activeUsers ?? 0}
+                  </Typography>
                 </Box>
-              )}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography variant="body1" fontWeight={600} color="text.primary">
+                    Waiting Users
+                  </Typography>
+                  <Typography variant="h6" fontWeight="bold" color="warning.main">
+                    {queueStatus?.waitingUsers ?? 0}
+                  </Typography>
+                </Box>
+              </Stack>
+            </Box>
 
-            {/* Entry Timer - Shows time remaining for entry window */}
-            {!queueStatus.showWaitingTimer && queueStatus.timeRemaining > 0 && (
-              <Box sx={{ mb: 3 }}>
-                <Typography
-                  variant="h3"
-                  align="center"
-                  sx={{ fontWeight: 700, mb: 1, color: 'primary.main' }}
-                >
-                  {Math.floor(queueStatus.timeRemaining / 60)}:
-                  {(queueStatus.timeRemaining % 60).toString().padStart(2, '0')}
-                </Typography>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 1,
-                    mb: 2,
-                  }}
-                >
-                  <AccessTimeIcon fontSize="small" color="action" />
-                  <Typography variant="body2" color="text.secondary">
-                    {isActive ? 'Time remaining' : 'Time until next slot'}
-                  </Typography>
-                </Box>
-                {event && (
-                  <LinearProgress
-                    variant="determinate"
-                    value={entryProgress}
-                    sx={{ height: 8, borderRadius: 4 }}
-                  />
+            {/* Timer - Always show when queueStatus exists */}
+            {queueStatus && (
+              <Box sx={{ mb: 3, p: 2, bgcolor: 'primary.light', borderRadius: 2 }}>
+                {/* 45-second Waiting Timer */}
+                {isWaiting &&
+                  queueStatus.showWaitingTimer &&
+                  waitDialog.open &&
+                  waitDialog.remaining > 0 && (
+                    <>
+                      <Typography
+                        variant="h3"
+                        align="center"
+                        sx={{ fontWeight: 700, mb: 1, color: 'warning.main' }}
+                      >
+                        {waitDialog.remaining}s
+                      </Typography>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 1,
+                          mb: 2,
+                        }}
+                      >
+                        <AccessTimeIcon fontSize="small" color="action" />
+                        <Typography variant="body2" color="text.secondary">
+                          Waiting timer - Entry limit exceeded
+                        </Typography>
+                      </Box>
+                      <LinearProgress
+                        variant="determinate"
+                        value={waitProgress}
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontWeight: 600, textAlign: 'center' }}>
+                        Your position: {queueStatus.position || 0} / {queueStatus.total || 0}
+                      </Typography>
+                    </>
+                  )}
+
+                {/* Entry Timer - Shows time remaining for entry window (interval timer) */}
+                {(!queueStatus.showWaitingTimer || (!waitDialog.open || waitDialog.remaining <= 0)) && (
+                  <>
+                    {isActive && queueStatus.timeRemaining > 0 ? (
+                      <>
+                        <Typography
+                          variant="h3"
+                          align="center"
+                          sx={{ fontWeight: 700, mb: 1, color: 'primary.main' }}
+                        >
+                          {Math.floor((queueStatus.timeRemaining ?? 0) / 60)}:
+                          {((queueStatus.timeRemaining ?? 0) % 60).toString().padStart(2, '0')}
+                        </Typography>
+                        <Box
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 1,
+                            mb: 2,
+                          }}
+                        >
+                          <AccessTimeIcon fontSize="small" color="action" />
+                          <Typography variant="body2" color="text.secondary">
+                            Waiting for interval to complete...
+                          </Typography>
+                        </Box>
+                        {event && (
+                          <LinearProgress
+                            variant="determinate"
+                            value={entryProgress}
+                            sx={{ height: 8, borderRadius: 4 }}
+                          />
+                        )}
+                        {event && (
+                          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block', textAlign: 'center' }}>
+                            Interval: {event.intervalSec}s - You will be redirected when timer completes
+                          </Typography>
+                        )}
+                      </>
+                    ) : isActive && queueStatus.timeRemaining === 0 ? (
+                      <Box sx={{ textAlign: 'center', py: 2 }}>
+                        <CheckCircleIcon sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
+                        <Typography variant="h6" color="success.main" fontWeight="bold">
+                          Queue available! Redirecting...
+                        </Typography>
+                      </Box>
+                    ) : event ? (
+                      <Box sx={{ textAlign: 'center' }}>
+                        <AccessTimeIcon sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
+                        <Typography variant="h5" fontWeight="bold" color="primary.main" sx={{ mb: 1 }}>
+                          {Math.floor(event.intervalSec / 60)}:
+                          {(event.intervalSec % 60).toString().padStart(2, '0')}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                          {isActive ? 'Queue window is active' : 'Waiting for next queue window'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Interval: {event.intervalSec}s
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Box sx={{ textAlign: 'center' }}>
+                        <AccessTimeIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                        <Typography variant="body2" color="text.secondary">
+                          {isActive ? 'Queue window is active' : 'Waiting for next queue window'}
+                        </Typography>
+                      </Box>
+                    )}
+                  </>
                 )}
               </Box>
             )}
 
             {/* Queue progress bar for waiting */}
-            {isWaiting && queueStatus.total > 0 && (
+            {isWaiting && queueStatus && (queueStatus.total ?? 0) >= 0 && (
               <Box sx={{ width: '100%', mb: 3 }}>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                   <Typography variant="body2" color="text.secondary">
                     Queue Progress
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {queueStatus.position} / {queueStatus.total}
+                    {queueStatus.position} / {queueStatus.total || 1}
                   </Typography>
                 </Box>
                 <LinearProgress
                   variant="determinate"
-                  value={(queueStatus.position / queueStatus.total) * 100}
+                  value={queueStatus.total > 0 ? (queueStatus.position / queueStatus.total) * 100 : 0}
                   sx={{ height: 8, borderRadius: 4 }}
                 />
               </Box>
             )}
-
-            {/* Additional stats */}
-            <Stack spacing={1.5} sx={{ mt: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Active Users
-                </Typography>
-                <Typography variant="body1" fontWeight="bold">
-                  {queueStatus.activeUsers}
-                </Typography>
-              </Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Waiting Users
-                </Typography>
-                <Typography variant="body1" fontWeight="bold">
-                  {queueStatus.waitingUsers}
-                </Typography>
-              </Box>
-            </Stack>
 
             {isActive && event && (
               <Box sx={{ mt: 3, p: 2, bgcolor: 'success.light', borderRadius: 2 }}>
