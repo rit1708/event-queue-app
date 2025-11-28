@@ -34,6 +34,11 @@ import {
   TextField,
   Snackbar,
   Alert,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  FormHelperText,
 } from '@mui/material';
 import {
   Dashboard as DashboardIcon,
@@ -124,6 +129,56 @@ function AdminApp() {
     intervalSec: 30,
   });
   const [editEvent, setEditEvent] = useState<Event | null>(null);
+  const [domains, setDomains] = useState<{ _id: string; name: string }[]>([]);
+  const [showCreateDomainDialog, setShowCreateDomainDialog] = useState(false);
+  const [newDomainName, setNewDomainName] = useState('');
+  const [domainSelectMode, setDomainSelectMode] = useState<'select' | 'create'>('select');
+
+  const loadDomains = async () => {
+    try {
+      const domainsList = await sdk.admin.getDomains();
+      setDomains(domainsList);
+    } catch (error) {
+      console.error('Failed to load domains:', error);
+      setSnackbar({
+        open: true,
+        message: 'Failed to load domains',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleCreateDomain = async () => {
+    if (!newDomainName.trim()) {
+      setSnackbar({
+        open: true,
+        message: 'Domain name is required',
+        severity: 'error',
+      });
+      return;
+    }
+
+    try {
+      const result = await sdk.admin.createDomain(newDomainName.trim());
+      setSnackbar({
+        open: true,
+        message: `Domain "${result.name}" created successfully!`,
+        severity: 'success',
+      });
+      await loadDomains();
+      setNewEvent({ ...newEvent, domain: result.name });
+      setNewDomainName('');
+      setShowCreateDomainDialog(false);
+      setDomainSelectMode('select');
+    } catch (error) {
+      console.error('Error creating domain:', error);
+      setSnackbar({
+        open: true,
+        message: (error as Error).message || 'Failed to create domain',
+        severity: 'error',
+      });
+    }
+  };
 
   const loadEvents = async () => {
     try {
@@ -1266,15 +1321,42 @@ function AdminApp() {
                 setNewEvent({ ...newEvent, name: e.target.value })
               }
             />
-            <TextField
-              label="Domain"
-              fullWidth
-              value={newEvent.domain}
-              onChange={(e) =>
-                setNewEvent({ ...newEvent, domain: e.target.value })
-              }
-              placeholder="e.g., demo.com"
-            />
+            <FormControl fullWidth>
+              <InputLabel>Domain</InputLabel>
+              <Select
+                value={domainSelectMode === 'create' ? 'create-new' : newEvent.domain}
+                label="Domain"
+                onChange={(e) => {
+                  if (e.target.value === 'create-new') {
+                    setDomainSelectMode('create');
+                    setShowCreateDomainDialog(true);
+                  } else {
+                    setDomainSelectMode('select');
+                    setNewEvent({ ...newEvent, domain: e.target.value });
+                  }
+                }}
+                onOpen={() => {
+                  loadDomains();
+                }}
+              >
+                {domains.map((domain) => (
+                  <MenuItem key={domain._id} value={domain.name}>
+                    {domain.name}
+                  </MenuItem>
+                ))}
+                <MenuItem value="create-new">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <AddIcon fontSize="small" />
+                    Create New Domain
+                  </Box>
+                </MenuItem>
+              </Select>
+              {domainSelectMode === 'create' && (
+                <FormHelperText>
+                  Click "Create New Domain" to add a new domain
+                </FormHelperText>
+              )}
+            </FormControl>
             <TextField
               label="Queue Limit"
               type="number"
@@ -1309,6 +1391,55 @@ function AdminApp() {
             disabled={!newEvent.name || !newEvent.domain}
           >
             Create
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create Domain Dialog */}
+      <Dialog
+        open={showCreateDomainDialog}
+        onClose={() => {
+          setShowCreateDomainDialog(false);
+          setNewDomainName('');
+          setDomainSelectMode('select');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Create New Domain</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Domain Name"
+              fullWidth
+              value={newDomainName}
+              onChange={(e) => setNewDomainName(e.target.value)}
+              placeholder="e.g., example.com"
+              autoFocus
+              onKeyPress={(e) => {
+                if (e.key === 'Enter') {
+                  handleCreateDomain();
+                }
+              }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setShowCreateDomainDialog(false);
+              setNewDomainName('');
+              setDomainSelectMode('select');
+            }}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleCreateDomain}
+            variant="contained"
+            disabled={!newDomainName.trim()}
+          >
+            Create Domain
           </Button>
         </DialogActions>
       </Dialog>

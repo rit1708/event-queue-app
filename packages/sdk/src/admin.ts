@@ -2,6 +2,10 @@ import { post, put, get, del } from './http';
 import type { Event, QueueUsers } from './types';
 import { ValidationError } from './types';
 
+export async function getDomains(): Promise<{ _id: string; name: string; createdAt?: Date }[]> {
+  return get<{ _id: string; name: string; createdAt?: Date }[]>('/admin/domain');
+}
+
 export async function createDomain(
   name: string
 ): Promise<{ domainId: string; name: string }> {

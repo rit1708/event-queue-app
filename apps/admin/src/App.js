@@ -1,6 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useState, useCallback } from 'react';
-import { Box, Button, Card, CardContent, Drawer, Grid, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Typography, Chip, Avatar, alpha, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Stack, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Snackbar, Alert, } from '@mui/material';
+import { Box, Button, Card, CardContent, Drawer, Grid, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Typography, Chip, Avatar, alpha, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, IconButton, Stack, LinearProgress, Dialog, DialogTitle, DialogContent, DialogActions, TextField, Snackbar, Alert, Select, MenuItem, FormControl, InputLabel, FormHelperText, } from '@mui/material';
 import { Dashboard as DashboardIcon, Event as EventIcon, People as PeopleIcon, Settings as SettingsIcon, BarChart as BarChartIcon, TrendingUp as TrendingUpIcon, PlayArrow as StartIcon, Stop as StopIcon, Refresh as RefreshIcon, CheckCircle as CheckCircleIcon, Schedule as ScheduleIcon, Timer as TimerIcon, Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon, } from '@mui/icons-material';
 import { LineChart, PieChart } from '@mui/x-charts';
 import { styled } from '@mui/material/styles';
@@ -60,6 +60,55 @@ function AdminApp() {
         intervalSec: 30,
     });
     const [editEvent, setEditEvent] = useState(null);
+    const [domains, setDomains] = useState([]);
+    const [showCreateDomainDialog, setShowCreateDomainDialog] = useState(false);
+    const [newDomainName, setNewDomainName] = useState('');
+    const [domainSelectMode, setDomainSelectMode] = useState('select');
+    const loadDomains = async () => {
+        try {
+            const domainsList = await sdk.admin.getDomains();
+            setDomains(domainsList);
+        }
+        catch (error) {
+            console.error('Failed to load domains:', error);
+            setSnackbar({
+                open: true,
+                message: 'Failed to load domains',
+                severity: 'error',
+            });
+        }
+    };
+    const handleCreateDomain = async () => {
+        if (!newDomainName.trim()) {
+            setSnackbar({
+                open: true,
+                message: 'Domain name is required',
+                severity: 'error',
+            });
+            return;
+        }
+        try {
+            const result = await sdk.admin.createDomain(newDomainName.trim());
+            setSnackbar({
+                open: true,
+                message: `Domain "${result.name}" created successfully!`,
+                severity: 'success',
+            });
+            await loadDomains();
+            setNewEvent({ ...newEvent, domain: result.name });
+            setNewDomainName('');
+            setShowCreateDomainDialog(false);
+            setDomainSelectMode('select');
+        }
+        catch (error) {
+            console.error('Error creating domain:', error);
+            setSnackbar({
+                open: true,
+                message: error.message || 'Failed to create domain',
+                severity: 'error',
+            });
+        }
+    };
     const loadEvents = async () => {
         try {
             const data = await sdk.getEvents();
@@ -460,13 +509,36 @@ function AdminApp() {
                                 }, children: [_jsx(ListItemIcon, { sx: { color: 'white', minWidth: 40 }, children: item.icon }), _jsx(ListItemText, { primary: item.label, primaryTypographyProps: {
                                             fontWeight: selectedView === item.id ? 600 : 400,
                                             color: 'white',
-                                        } })] }) }, item.id))) })] }), _jsxs(MainContent, { children: [selectedView === 'dashboard' && renderDashboard(), selectedView === 'events' && renderEvents(), selectedView === 'users' && renderUsers(), selectedView === 'analytics' && renderAnalytics(), selectedView === 'settings' && (_jsxs(Box, { children: [_jsx(Typography, { variant: "h4", sx: { fontWeight: 700, color: '#1e293b' }, children: "Settings" }), _jsx(Card, { sx: { mt: 3 }, children: _jsx(CardContent, { children: _jsx(Typography, { children: "Settings panel coming soon..." }) }) })] }))] }), _jsxs(Dialog, { open: createDialogOpen, onClose: () => setCreateDialogOpen(false), maxWidth: "sm", fullWidth: true, children: [_jsx(DialogTitle, { children: "Create New Event" }), _jsx(DialogContent, { children: _jsxs(Stack, { spacing: 2, sx: { mt: 1 }, children: [_jsx(TextField, { label: "Event Name", fullWidth: true, value: newEvent.name, onChange: (e) => setNewEvent({ ...newEvent, name: e.target.value }) }), _jsx(TextField, { label: "Domain", fullWidth: true, value: newEvent.domain, onChange: (e) => setNewEvent({ ...newEvent, domain: e.target.value }), placeholder: "e.g., demo.com" }), _jsx(TextField, { label: "Queue Limit", type: "number", fullWidth: true, value: newEvent.queueLimit, onChange: (e) => setNewEvent({
+                                        } })] }) }, item.id))) })] }), _jsxs(MainContent, { children: [selectedView === 'dashboard' && renderDashboard(), selectedView === 'events' && renderEvents(), selectedView === 'users' && renderUsers(), selectedView === 'analytics' && renderAnalytics(), selectedView === 'settings' && (_jsxs(Box, { children: [_jsx(Typography, { variant: "h4", sx: { fontWeight: 700, color: '#1e293b' }, children: "Settings" }), _jsx(Card, { sx: { mt: 3 }, children: _jsx(CardContent, { children: _jsx(Typography, { children: "Settings panel coming soon..." }) }) })] }))] }), _jsxs(Dialog, { open: createDialogOpen, onClose: () => setCreateDialogOpen(false), maxWidth: "sm", fullWidth: true, children: [_jsx(DialogTitle, { children: "Create New Event" }), _jsx(DialogContent, { children: _jsxs(Stack, { spacing: 2, sx: { mt: 1 }, children: [_jsx(TextField, { label: "Event Name", fullWidth: true, value: newEvent.name, onChange: (e) => setNewEvent({ ...newEvent, name: e.target.value }) }), _jsxs(FormControl, { fullWidth: true, children: [_jsx(InputLabel, { children: "Domain" }), _jsxs(Select, { value: domainSelectMode === 'create' ? 'create-new' : newEvent.domain, label: "Domain", onChange: (e) => {
+                                                if (e.target.value === 'create-new') {
+                                                    setDomainSelectMode('create');
+                                                    setShowCreateDomainDialog(true);
+                                                }
+                                                else {
+                                                    setDomainSelectMode('select');
+                                                    setNewEvent({ ...newEvent, domain: e.target.value });
+                                                }
+                                            }, onOpen: () => {
+                                                loadDomains();
+                                            }, children: [domains.map((domain) => (_jsx(MenuItem, { value: domain.name, children: domain.name }, domain._id))), _jsx(MenuItem, { value: "create-new", children: _jsxs(Box, { sx: { display: 'flex', alignItems: 'center', gap: 1 }, children: [_jsx(AddIcon, { fontSize: "small" }), "Create New Domain"] }) })] }), domainSelectMode === 'create' && (_jsx(FormHelperText, { children: "Click \"Create New Domain\" to add a new domain" }))] }), _jsx(TextField, { label: "Queue Limit", type: "number", fullWidth: true, value: newEvent.queueLimit, onChange: (e) => setNewEvent({
                                         ...newEvent,
                                         queueLimit: parseInt(e.target.value) || 2,
                                     }) }), _jsx(TextField, { label: "Interval (seconds)", type: "number", fullWidth: true, value: newEvent.intervalSec, onChange: (e) => setNewEvent({
                                         ...newEvent,
                                         intervalSec: parseInt(e.target.value) || 30,
-                                    }) })] }) }), _jsxs(DialogActions, { children: [_jsx(Button, { onClick: () => setCreateDialogOpen(false), children: "Cancel" }), _jsx(Button, { onClick: handleCreateEvent, variant: "contained", disabled: !newEvent.name || !newEvent.domain, children: "Create" })] })] }), _jsxs(Dialog, { open: editDialogOpen, onClose: () => setEditDialogOpen(false), maxWidth: "sm", fullWidth: true, children: [_jsx(DialogTitle, { children: "Edit Event" }), _jsx(DialogContent, { children: editEvent && (_jsxs(Stack, { spacing: 2, sx: { mt: 1 }, children: [_jsx(TextField, { label: "Event Name", fullWidth: true, value: editEvent.name, disabled: true, helperText: "Event name cannot be changed" }), _jsx(TextField, { label: "Domain", fullWidth: true, value: editEvent.domain, disabled: true, helperText: "Domain cannot be changed" }), _jsx(TextField, { label: "Queue Limit", type: "number", fullWidth: true, value: editEvent.queueLimit, onChange: (e) => setEditEvent({
+                                    }) })] }) }), _jsxs(DialogActions, { children: [_jsx(Button, { onClick: () => setCreateDialogOpen(false), children: "Cancel" }), _jsx(Button, { onClick: handleCreateEvent, variant: "contained", disabled: !newEvent.name || !newEvent.domain, children: "Create" })] })] }), _jsxs(Dialog, { open: showCreateDomainDialog, onClose: () => {
+                    setShowCreateDomainDialog(false);
+                    setNewDomainName('');
+                    setDomainSelectMode('select');
+                }, maxWidth: "sm", fullWidth: true, children: [_jsx(DialogTitle, { children: "Create New Domain" }), _jsx(DialogContent, { children: _jsx(Stack, { spacing: 2, sx: { mt: 1 }, children: _jsx(TextField, { label: "Domain Name", fullWidth: true, value: newDomainName, onChange: (e) => setNewDomainName(e.target.value), placeholder: "e.g., example.com", autoFocus: true, onKeyPress: (e) => {
+                                    if (e.key === 'Enter') {
+                                        handleCreateDomain();
+                                    }
+                                } }) }) }), _jsxs(DialogActions, { children: [_jsx(Button, { onClick: () => {
+                                    setShowCreateDomainDialog(false);
+                                    setNewDomainName('');
+                                    setDomainSelectMode('select');
+                                }, children: "Cancel" }), _jsx(Button, { onClick: handleCreateDomain, variant: "contained", disabled: !newDomainName.trim(), children: "Create Domain" })] })] }), _jsxs(Dialog, { open: editDialogOpen, onClose: () => setEditDialogOpen(false), maxWidth: "sm", fullWidth: true, children: [_jsx(DialogTitle, { children: "Edit Event" }), _jsx(DialogContent, { children: editEvent && (_jsxs(Stack, { spacing: 2, sx: { mt: 1 }, children: [_jsx(TextField, { label: "Event Name", fullWidth: true, value: editEvent.name, disabled: true, helperText: "Event name cannot be changed" }), _jsx(TextField, { label: "Domain", fullWidth: true, value: editEvent.domain, disabled: true, helperText: "Domain cannot be changed" }), _jsx(TextField, { label: "Queue Limit", type: "number", fullWidth: true, value: editEvent.queueLimit, onChange: (e) => setEditEvent({
                                         ...editEvent,
                                         queueLimit: parseInt(e.target.value) || 2,
                                     }) }), _jsx(TextField, { label: "Interval (seconds)", type: "number", fullWidth: true, value: editEvent.intervalSec, onChange: (e) => setEditEvent({
