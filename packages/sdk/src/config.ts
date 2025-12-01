@@ -7,6 +7,7 @@ interface SDKConfig {
   retryDelay: number;
   enableLogging: boolean;
   headers: Record<string, string>;
+  token?: string;
 }
 
 let config: SDKConfig = {
@@ -16,6 +17,7 @@ let config: SDKConfig = {
   retryDelay: 1000,
   enableLogging: false,
   headers: {},
+  token: undefined,
 };
 
 function getDefaultBaseUrl(): string {
@@ -66,6 +68,10 @@ export function init(options?: InitOptions): void {
   if (options?.headers) {
     config.headers = { ...config.headers, ...options.headers };
   }
+
+  if (options?.token) {
+    config.token = options.token;
+  }
 }
 
 export function getConfig(): Readonly<SDKConfig> {
@@ -74,6 +80,46 @@ export function getConfig(): Readonly<SDKConfig> {
 
 export function getBaseUrl(): string {
   return config.baseUrl;
+}
+
+export function setToken(token: string | undefined): void {
+  config.token = token;
+}
+
+export function getToken(): string | undefined {
+  return config.token;
+}
+
+// Helper to load token from localStorage (for browser environments)
+export function loadTokenFromStorage(key: string = 'queue_api_token'): string | undefined {
+  if (typeof window === 'undefined') return undefined;
+  try {
+    return localStorage.getItem(key) || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Helper to save token to localStorage (for browser environments)
+export function saveTokenToStorage(token: string, key: string = 'queue_api_token'): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(key, token);
+    config.token = token;
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+// Helper to remove token from localStorage
+export function clearTokenFromStorage(key: string = 'queue_api_token'): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(key);
+    config.token = undefined;
+  } catch {
+    // Ignore storage errors
+  }
 }
 
 function log(message: string, ...args: unknown[]): void {

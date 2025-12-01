@@ -119,3 +119,59 @@ export async function stopQueue(eventId: string): Promise<{ ok: boolean }> {
   }
   return post<{ ok: boolean }>('/admin/event/stop', { eventId });
 }
+
+// Token management functions
+export interface Token {
+  _id: string;
+  name?: string;
+  createdAt: Date;
+  expiresAt?: Date;
+  isActive: boolean;
+  isExpired?: boolean;
+  lastUsedAt?: Date;
+}
+
+export interface GenerateTokenResponse {
+  _id: string;
+  token: string; // Only returned on creation
+  name?: string;
+  createdAt: Date;
+  expiresAt?: Date;
+  isActive: boolean;
+}
+
+export async function generateToken(params: {
+  name?: string;
+  expiresInDays?: number;
+  neverExpires?: boolean;
+}): Promise<GenerateTokenResponse> {
+  const response = await post<{ success: boolean; data: GenerateTokenResponse }>('/admin/token', params);
+  if (response && 'data' in response) {
+    return (response as { success: boolean; data: GenerateTokenResponse }).data;
+  }
+  // Fallback if response is directly the token object
+  return response as GenerateTokenResponse;
+}
+
+export async function listTokens(): Promise<Token[]> {
+  const response = await get<{ success: boolean; data: Token[] }>('/admin/token');
+  if (response && 'data' in response) {
+    return (response as { success: boolean; data: Token[] }).data || [];
+  }
+  // Fallback if response is directly an array (shouldn't happen but for safety)
+  return Array.isArray(response) ? response : [];
+}
+
+export async function revokeToken(tokenId: string): Promise<{ success: boolean; message: string }> {
+  if (!tokenId || typeof tokenId !== 'string') {
+    throw new ValidationError('Token ID is required and must be a string');
+  }
+  return post<{ success: boolean; message: string }>(`/admin/token/${tokenId}/revoke`);
+}
+
+export async function deleteToken(tokenId: string): Promise<{ success: boolean; message: string }> {
+  if (!tokenId || typeof tokenId !== 'string') {
+    throw new ValidationError('Token ID is required and must be a string');
+  }
+  return del<{ success: boolean; message: string }>(`/admin/token/${tokenId}`);
+}

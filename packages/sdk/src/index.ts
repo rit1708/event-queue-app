@@ -7,12 +7,12 @@ export * from './admin';
 // React components and hooks
 export * from './react';
 
-import { init, getBaseUrl, getConfig } from './config';
+import { init, getBaseUrl, getConfig, setToken, getToken, loadTokenFromStorage, saveTokenToStorage, clearTokenFromStorage } from './config';
 import * as events from './events';
 import * as queue from './queue';
 import * as admin from './admin';
 
-export { init, getBaseUrl, getConfig };
+export { init, getBaseUrl, getConfig, setToken, getToken, loadTokenFromStorage, saveTokenToStorage, clearTokenFromStorage };
 export { events, queue, admin };
 
 export default {

@@ -13,10 +13,12 @@ export const useEvents = () => {
     try {
       setLoading(true);
       setError(null);
+      
+      // Events list doesn't require token - fetch without token check
       const data = await sdk.getEvents();
       setEvents(data);
       logger.debug('Events fetched successfully', { count: data.length });
-    } catch (err) {
+    } catch (err: any) {
       const errorMessage = handleApiError(err);
       setError(errorMessage);
       logger.error('Failed to fetch events', err);

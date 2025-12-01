@@ -21,13 +21,32 @@ export const useQueue = ({ eventId, userId, enabled = true, pollInterval = 2000 
     try {
       setLoading(true);
       setError(null);
+      
+      // Check if token exists - required for queue operations
+      const token = sdk.getToken() || sdk.loadTokenFromStorage();
+      if (!token) {
+        const errorMsg = 'API token is required to join the queue. Please set a token using: sdk.setToken("your-token") or via localStorage (queue_api_token key).';
+        setError(errorMsg);
+        logger.error('Token missing for queue join');
+        return null;
+      }
+
       const result = await sdk.joinQueue(eventId, userId);
       logger.debug('Joined queue', result);
       return result;
-    } catch (err) {
+    } catch (err: any) {
       const errorMessage = handleApiError(err);
       setError(errorMessage);
       logger.error('Failed to join queue', err);
+      
+      // If it's a token error, provide helpful message
+      if (err.statusCode === 401 || err.message?.includes('token') || err.message?.includes('unauthorized')) {
+        const tokenError = 'Invalid or expired token. Please update your API token. You can view events without a token, but joining the queue requires a valid token.';
+        setError(tokenError);
+        sdk.clearTokenFromStorage();
+        sdk.setToken(undefined);
+      }
+      
       return null;
     } finally {
       setLoading(false);

@@ -55,6 +55,7 @@ export interface InitOptions {
   retryDelay?: number;
   enableLogging?: boolean;
   headers?: Record<string, string>;
+  token?: string;
 }
 
 export interface RequestOptions {

@@ -11,11 +11,13 @@ import {
   getQueueStatus,
 } from '../controllers/queue.controller';
 import { validateQueueAccess } from '../middleware/queueValidator';
+import { tokenAuth } from '../middleware/tokenAuth';
 
 const router = Router();
 
-router.post('/join', queueJoinLimiter, validate(joinQueueSchema), validateQueueAccess, asyncHandler(joinQueue));
-router.get('/status', queueStatusLimiter, validate(queueStatusSchema), asyncHandler(getQueueStatus));
+// Queue operations require token authentication
+router.post('/join', tokenAuth, queueJoinLimiter, validate(joinQueueSchema), validateQueueAccess, asyncHandler(joinQueue));
+router.get('/status', tokenAuth, queueStatusLimiter, validate(queueStatusSchema), asyncHandler(getQueueStatus));
 
 export default router;
 
