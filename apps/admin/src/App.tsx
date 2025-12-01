@@ -56,6 +56,10 @@ import {
   Add as AddIcon,
   Edit as EditIcon,
   Delete as DeleteIcon,
+  VpnKey as VpnKeyIcon,
+  ContentCopy as ContentCopyIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
 import { LineChart, PieChart } from '@mui/x-charts';
 import { styled } from '@mui/material/styles';
@@ -133,6 +137,14 @@ function AdminApp() {
   const [showCreateDomainDialog, setShowCreateDomainDialog] = useState(false);
   const [newDomainName, setNewDomainName] = useState('');
   const [domainSelectMode, setDomainSelectMode] = useState<'select' | 'create'>('select');
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [showCreateTokenDialog, setShowCreateTokenDialog] = useState(false);
+  const [newToken, setNewToken] = useState({ name: '', expiresInDays: 15, neverExpires: false });
+  const [generatedToken, setGeneratedToken] = useState<string | null>(null);
+  const [showTokenDialog, setShowTokenDialog] = useState(false);
+  const [tokenToDelete, setTokenToDelete] = useState<any | null>(null);
+  const [showDeleteTokenDialog, setShowDeleteTokenDialog] = useState(false);
+  const [showTokenValue, setShowTokenValue] = useState<{ [key: string]: boolean }>({});
 
   const loadDomains = async () => {
     try {
@@ -243,6 +255,7 @@ function AdminApp() {
   useEffect(() => {
     // SDK will auto-detect API URL from environment or use relative path
     loadEvents();
+    loadTokens();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -393,6 +406,7 @@ function AdminApp() {
     { id: 'dashboard', label: 'Dashboard', icon: <DashboardIcon /> },
     { id: 'events', label: 'Events', icon: <EventIcon /> },
     { id: 'users', label: 'Users', icon: <PeopleIcon /> },
+    { id: 'tokens', label: 'API Tokens', icon: <VpnKeyIcon /> },
     { id: 'analytics', label: 'Analytics', icon: <BarChartIcon /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
   ];
@@ -1177,6 +1191,203 @@ function AdminApp() {
     </Box>
   );
 
+  const loadTokens = async () => {
+    try {
+      const data = await sdk.admin.listTokens();
+      setTokens(data);
+    } catch (error) {
+      console.error('Error loading tokens:', error);
+      setSnackbar({
+        open: true,
+        message: (error as Error).message || 'Failed to load tokens',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleCreateToken = async () => {
+    try {
+      const result = await sdk.admin.generateToken({
+        name: newToken.name || undefined,
+        expiresInDays: newToken.neverExpires ? undefined : newToken.expiresInDays,
+        neverExpires: newToken.neverExpires,
+      });
+      setGeneratedToken(result.token);
+      setShowTokenDialog(true);
+      setShowCreateTokenDialog(false);
+      setNewToken({ name: '', expiresInDays: 15, neverExpires: false });
+      loadTokens();
+      setSnackbar({
+        open: true,
+        message: 'Token generated successfully!',
+        severity: 'success',
+      });
+    } catch (error) {
+      console.error('Error creating token:', error);
+      setSnackbar({
+        open: true,
+        message: (error as Error).message || 'Failed to create token',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleRevokeToken = async () => {
+    if (!tokenToDelete) return;
+    try {
+      await sdk.admin.revokeToken(tokenToDelete._id);
+      setSnackbar({
+        open: true,
+        message: 'Token revoked successfully!',
+        severity: 'success',
+      });
+      setShowDeleteTokenDialog(false);
+      setTokenToDelete(null);
+      loadTokens();
+    } catch (error) {
+      console.error('Error revoking token:', error);
+      setSnackbar({
+        open: true,
+        message: (error as Error).message || 'Failed to revoke token',
+        severity: 'error',
+      });
+    }
+  };
+
+  const handleDeleteToken = async () => {
+    if (!tokenToDelete) return;
+    try {
+      await sdk.admin.deleteToken(tokenToDelete._id);
+      setSnackbar({
+        open: true,
+        message: 'Token deleted successfully!',
+        severity: 'success',
+      });
+      setShowDeleteTokenDialog(false);
+      setTokenToDelete(null);
+      loadTokens();
+    } catch (error) {
+      console.error('Error deleting token:', error);
+      setSnackbar({
+        open: true,
+        message: (error as Error).message || 'Failed to delete token',
+        severity: 'error',
+      });
+    }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setSnackbar({
+      open: true,
+      message: 'Token copied to clipboard!',
+      severity: 'success',
+    });
+  };
+
+  const formatDate = (date: Date | string | undefined) => {
+    if (!date) return 'Never';
+    const d = typeof date === 'string' ? new Date(date) : date;
+    return d.toLocaleString();
+  };
+
+  const renderTokens = () => (
+    <Box>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4,
+        }}
+      >
+        <Typography variant="h4" sx={{ fontWeight: 700, color: '#1e293b' }}>
+          API Tokens
+        </Typography>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setShowCreateTokenDialog(true)}
+          >
+            Generate Token
+          </Button>
+          <IconButton onClick={loadTokens}>
+            <RefreshIcon />
+          </IconButton>
+        </Stack>
+      </Box>
+
+      <Card>
+        <CardContent>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: alpha('#6366f1', 0.05) }}>
+                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Created</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Expires</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Last Used</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {tokens.map((token) => (
+                  <TableRow key={token._id} hover>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {token.name || 'Unnamed Token'}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>{formatDate(token.createdAt)}</TableCell>
+                    <TableCell>
+                      {token.expiresAt ? formatDate(token.expiresAt) : 'Never'}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={token.isActive && !token.isExpired ? 'Active' : token.isExpired ? 'Expired' : 'Revoked'}
+                        color={token.isActive && !token.isExpired ? 'success' : 'default'}
+                        size="small"
+                        sx={{ fontWeight: 600 }}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {token.lastUsedAt ? formatDate(token.lastUsedAt) : 'Never'}
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={0.5}>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setTokenToDelete(token);
+                            setShowDeleteTokenDialog(true);
+                          }}
+                          color="error"
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {tokens.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary">
+                        No tokens found. Generate your first API token to get started.
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </CardContent>
+      </Card>
+    </Box>
+  );
+
   const renderAnalytics = () => (
     <Box>
       <Typography
@@ -1288,6 +1499,7 @@ function AdminApp() {
         {selectedView === 'dashboard' && renderDashboard()}
         {selectedView === 'events' && renderEvents()}
         {selectedView === 'users' && renderUsers()}
+        {selectedView === 'tokens' && renderTokens()}
         {selectedView === 'analytics' && renderAnalytics()}
         {selectedView === 'settings' && (
           <Box>
@@ -1519,6 +1731,175 @@ function AdminApp() {
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
           <Button onClick={handleDeleteEvent} variant="contained" color="error">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create Token Dialog */}
+      <Dialog
+        open={showCreateTokenDialog}
+        onClose={() => setShowCreateTokenDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Generate API Token</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Token Name (optional)"
+              fullWidth
+              value={newToken.name}
+              onChange={(e) =>
+                setNewToken({ ...newToken, name: e.target.value })
+              }
+              placeholder="e.g., Production API Token"
+            />
+            <FormControl fullWidth>
+              <InputLabel>Expiration</InputLabel>
+              <Select
+                value={newToken.neverExpires ? 'never' : 'days'}
+                label="Expiration"
+                onChange={(e) => {
+                  if (e.target.value === 'never') {
+                    setNewToken({ ...newToken, neverExpires: true });
+                  } else {
+                    setNewToken({ ...newToken, neverExpires: false });
+                  }
+                }}
+              >
+                <MenuItem value="days">15 Days (Default)</MenuItem>
+                <MenuItem value="never">Never Expires</MenuItem>
+              </Select>
+            </FormControl>
+            {!newToken.neverExpires && (
+              <TextField
+                label="Expires In (days)"
+                type="number"
+                fullWidth
+                value={newToken.expiresInDays}
+                onChange={(e) =>
+                  setNewToken({
+                    ...newToken,
+                    expiresInDays: parseInt(e.target.value) || 15,
+                  })
+                }
+                inputProps={{ min: 1, max: 365 }}
+              />
+            )}
+            <Alert severity="info" sx={{ mt: 1 }}>
+              {newToken.neverExpires
+                ? 'This token will never expire. Keep it secure!'
+                : `This token will expire in ${newToken.expiresInDays} days.`}
+            </Alert>
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowCreateTokenDialog(false)}>Cancel</Button>
+          <Button onClick={handleCreateToken} variant="contained">
+            Generate Token
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Generated Token Dialog */}
+      <Dialog
+        open={showTokenDialog}
+        onClose={() => {
+          setShowTokenDialog(false);
+          setGeneratedToken(null);
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Token Generated Successfully</DialogTitle>
+        <DialogContent>
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              Important: Copy this token now. You won't be able to see it again!
+            </Typography>
+          </Alert>
+          <TextField
+            label="API Token"
+            fullWidth
+            value={generatedToken || ''}
+            multiline
+            rows={3}
+            InputProps={{
+              readOnly: true,
+              endAdornment: (
+                <IconButton
+                  onClick={() => generatedToken && copyToClipboard(generatedToken)}
+                  edge="end"
+                >
+                  <ContentCopyIcon />
+                </IconButton>
+              ),
+            }}
+            sx={{ mt: 2 }}
+          />
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+            Use this token in your client applications by setting it in the SDK configuration:
+          </Typography>
+          <Box
+            sx={{
+              mt: 1,
+              p: 2,
+              bgcolor: alpha('#000', 0.05),
+              borderRadius: 1,
+              fontFamily: 'monospace',
+              fontSize: '0.875rem',
+            }}
+          >
+            {`sdk.init({ token: '${generatedToken}' })`}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              if (generatedToken) copyToClipboard(generatedToken);
+            }}
+            startIcon={<ContentCopyIcon />}
+          >
+            Copy Token
+          </Button>
+          <Button
+            onClick={() => {
+              setShowTokenDialog(false);
+              setGeneratedToken(null);
+            }}
+            variant="contained"
+          >
+            Done
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Token Dialog */}
+      <Dialog
+        open={showDeleteTokenDialog}
+        onClose={() => {
+          setShowDeleteTokenDialog(false);
+          setTokenToDelete(null);
+        }}
+      >
+        <DialogTitle>Delete Token</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete the token "{tokenToDelete?.name || 'Unnamed Token'}"?
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setShowDeleteTokenDialog(false);
+              setTokenToDelete(null);
+            }}
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleDeleteToken} variant="contained" color="error">
             Delete
           </Button>
         </DialogActions>

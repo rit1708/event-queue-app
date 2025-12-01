@@ -13,6 +13,11 @@ import {
   createEventSchema,
   updateEventSchema,
 } from '../schemas/event.schema';
+import {
+  generateTokenSchema,
+  tokenIdSchema,
+  revokeTokenSchema,
+} from '../schemas/token.schema';
 import { createDomain, getDomains } from '../controllers/domain.controller';
 import {
   advanceQueueManually,
@@ -27,6 +32,12 @@ import {
   updateEvent,
   deleteEvent,
 } from '../controllers/event.controller';
+import {
+  generateToken,
+  listTokens,
+  revokeToken,
+  deleteToken,
+} from '../controllers/token.controller';
 import { ensureDomainExists } from '../middleware/domainValidator';
 import { Request, Response } from 'express';
 import {
@@ -89,6 +100,27 @@ router.delete(
   adminWriteLimiter,
   validate(eventIdSchema),
   asyncHandler(deleteEvent)
+);
+
+// Token management routes
+router.post(
+  '/token',
+  adminWriteLimiter,
+  validate(generateTokenSchema),
+  asyncHandler(generateToken)
+);
+router.get('/token', adminReadLimiter, asyncHandler(listTokens));
+router.post(
+  '/token/:id/revoke',
+  adminWriteLimiter,
+  validate(revokeTokenSchema),
+  asyncHandler(revokeToken)
+);
+router.delete(
+  '/token/:id',
+  adminWriteLimiter,
+  validate(tokenIdSchema),
+  asyncHandler(deleteToken)
 );
 
 export default router;

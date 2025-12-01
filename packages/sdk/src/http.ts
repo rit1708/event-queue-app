@@ -58,6 +58,11 @@ async function requestWithRetry<T>(
         ...config.headers,
       };
 
+      // Add Authorization header if token is configured
+      if (cfg.token) {
+        headers['Authorization'] = `Bearer ${cfg.token}`;
+      }
+
       const fetchOptions: RequestInit = {
         method: config.method || 'GET',
         headers,
