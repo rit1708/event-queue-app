@@ -11,7 +11,7 @@ export async function getDb(): Promise<Db> {
   if (db && client) {
     return db;
   }
-
+5
   const candidates = [
     process.env.MONGO_LOCAL_URL,
     'mongodb://127.0.0.1:27017/queue-app',

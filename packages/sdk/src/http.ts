@@ -7,7 +7,7 @@ interface RequestConfig {
   signal?: AbortSignal;
   timeout?: number;
   retries?: number;
-  headers?: Record<string, string>;
+  headers?: Record<string, string | null | undefined>;
 }
 
 async function sleep(ms: number): Promise<void> {
@@ -52,15 +52,34 @@ async function requestWithRetry<T>(
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       const timeout = config.timeout ?? cfg.timeout;
+      // Start with base headers
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         ...cfg.headers,
-        ...config.headers,
       };
 
-      // Add Authorization header if token is configured
-      if (cfg.token) {
-        headers['Authorization'] = `Bearer ${cfg.token}`;
+      // Merge custom headers, but filter out null/undefined values
+      if (config.headers) {
+        Object.entries(config.headers).forEach(([key, value]) => {
+          if (value !== null && value !== undefined) {
+            headers[key] = value;
+          }
+        });
+      }
+
+      // Add Authorization header if token is configured and not explicitly excluded
+      // Check if Authorization was explicitly set to null/undefined in config.headers
+      const authExcluded = config.headers && 
+        (config.headers.Authorization === null || config.headers.Authorization === undefined);
+      
+      if (cfg.token && !authExcluded) {
+        const token = cfg.token.trim();
+        headers['Authorization'] = `Bearer ${token}`;
+        log(`Adding Authorization header with token: ${token.substring(0, 10)}...`);
+      } else if (!cfg.token) {
+        log('No token configured - Authorization header will not be sent');
+      } else if (authExcluded) {
+        log('Authorization header excluded - token will be sent in payload');
       }
 
       const fetchOptions: RequestInit = {
@@ -71,6 +90,11 @@ async function requestWithRetry<T>(
 
       if (config.body) {
         fetchOptions.body = JSON.stringify(config.body);
+        // Log body to verify token is included (for debugging)
+        if (config.method === 'POST' && typeof config.body === 'object') {
+          const bodyObj = config.body as any;
+          log(`Request body includes token: ${!!bodyObj.token}, token length: ${bodyObj.token?.length || 0}`);
+        }
       }
 
       log(`Request: ${config.method || 'GET'} ${url}`, { attempt: attempt + 1 });

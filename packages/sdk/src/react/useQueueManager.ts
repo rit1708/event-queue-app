@@ -13,6 +13,7 @@ export interface UseQueueManagerOptions {
   onActive?: (event: Event) => void;
   onRedirect?: (url: string) => void;
   redirectUrl?: string;
+  accessToken?: string; // Optional access token to override SDK token
 }
 
 export interface QueueManagerState {
@@ -43,6 +44,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     eventId,
     userId,
     event,
+    accessToken,
     domainId,
     pollInterval = 2000,
     autoJoin = false,
@@ -54,6 +56,17 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
   const effectiveEventId = eventId || event?._id;
   const effectiveUserId =
     userId || (() => 'user-' + Math.random().toString(36).slice(2, 10))();
+
+  // If an explicit accessToken is provided, set it in the SDK immediately
+  useEffect(() => {
+    if (accessToken && accessToken.trim().length > 0) {
+      const trimmed = accessToken.trim();
+      const current = sdk.getToken();
+      if (current !== trimmed) {
+        sdk.setToken(trimmed);
+      }
+    }
+  }, [accessToken]);
 
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [loading, setLoading] = useState(false);
@@ -172,11 +185,34 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
       // Get domain from event if available
       const domain = event?.domain || domainId || null;
 
+      // CRITICAL: Ensure token is set from accessToken prop before calling joinQueue
+      if (accessToken && accessToken.trim().length > 0) {
+        const trimmed = accessToken.trim();
+        const current = sdk.getToken();
+        if (current !== trimmed) {
+          sdk.setToken(trimmed);
+          console.log('Token set from accessToken prop before joinQueue');
+        }
+      }
+
+      // Verify token is available before making request
+      const tokenBeforeRequest = sdk.getToken();
+      if (!tokenBeforeRequest || tokenBeforeRequest.trim().length === 0) {
+        const errorMsg = 'Token is required but not found. Please set token using sdk.setToken() or pass accessToken prop.';
+        console.error('Join queue failed:', errorMsg);
+        setError(errorMsg);
+        setLoading(false);
+        isJoiningRef.current = false;
+        return;
+      }
+
       console.log('Attempting to join queue:', {
         eventId: effectiveEventId,
         userId: effectiveUserId,
         domain,
         requestId,
+        hasToken: !!tokenBeforeRequest,
+        tokenLength: tokenBeforeRequest.length,
       });
       setLoading(true);
       setError(null);
@@ -235,7 +271,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
           result.showWaitingTimer &&
           result.waitingTimerDuration
         ) {
-          const timerDuration = result.waitingTimerDuration || 45;
+          const timerDuration = result.waitingTimerDuration || (event?.intervalSec ?? 45);
           setWaitDialog({
             open: true,
             duration: timerDuration,
@@ -336,7 +372,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
       isJoiningRef.current = false; // Reset joining flag
       // Keep requestIdRef to prevent immediate duplicate, but allow new requests after debounce
     }
-  }, [effectiveEventId, effectiveUserId, event, domainId, loading]);
+  }, [effectiveEventId, effectiveUserId, event, domainId, loading, accessToken]);
 
   // Close modal handler
   const closeModal = useCallback(() => {
@@ -464,7 +500,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
         displayQueueStatus.showWaitingTimer && displayQueueStatus.waitingTimerDuration;
 
       if (showTimer) {
-        const timerDuration = displayQueueStatus.waitingTimerDuration || 45;
+        const timerDuration = displayQueueStatus.waitingTimerDuration || (event?.intervalSec ?? 45);
         setWaitDialog((prev) => {
           // Only update if not already set or if duration changed
           if (
@@ -502,7 +538,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     if (
       !waitDialog.open ||
       waitDialog.remaining <= 0 ||
-      waitDialog.duration !== 45
+      waitDialog.duration <= 0
     ) {
       return;
     }
@@ -691,6 +727,7 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     [joinQueue, closeModal, openModal, reset]
   );
 
+  // Redirect when waiting timer completes
   useEffect(() => {
     if (
       !waitDialog.open ||
@@ -699,7 +736,8 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     ) {
       return;
     }
-    if (hasRedirected || !queueStatus || queueStatus.state !== 'waiting') {
+    // When waiting timer completes, redirect user to the expected route
+    if (hasRedirected) {
       return;
     }
 
@@ -716,7 +754,6 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     waitDialog.open,
     waitDialog.remaining,
     waitDialog.duration,
-    queueStatus,
     hasRedirected,
     resolveRedirectTarget,
     onRedirect,

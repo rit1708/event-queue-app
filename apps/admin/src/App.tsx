@@ -60,6 +60,8 @@ import {
   ContentCopy as ContentCopyIcon,
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
+  AccessTime as AccessTimeIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import { LineChart, PieChart } from '@mui/x-charts';
 import { styled } from '@mui/material/styles';
@@ -202,14 +204,24 @@ function AdminApp() {
           const stillExists = data.find((e) => e._id === selectedEvent._id);
           if (!stillExists) {
             // Selected event was deleted, select the first one
-            setSelectedEvent(data[0]);
+            const newSelected = data[0];
+            setSelectedEvent(newSelected);
+            // Load queue data for the newly selected event
+            if (newSelected) {
+              loadQueueData(newSelected._id);
+            }
           } else {
             // Update selected event with latest data
             setSelectedEvent(stillExists);
           }
         } else {
           // No selected event, select the first one
-          setSelectedEvent(data[0]);
+          const firstEvent = data[0];
+          setSelectedEvent(firstEvent);
+          // Load queue data for the first event
+          if (firstEvent) {
+            loadQueueData(firstEvent._id);
+          }
         }
       } else {
         setSelectedEvent(null);
@@ -225,13 +237,26 @@ function AdminApp() {
   };
 
   const loadQueueData = useCallback(async (eventId: string) => {
-    if (!eventId) return;
+    if (!eventId) {
+      console.log('[loadQueueData] No eventId provided');
+      return;
+    }
     try {
+      console.log('[loadQueueData] Loading queue data for eventId:', eventId);
       const data = await sdk.getQueueUsers(eventId);
+      console.log('[loadQueueData] Received data:', data);
+      
+      // Ensure we have arrays
+      const activeUsers = Array.isArray(data?.active) ? data.active : [];
+      const waitingUsers = Array.isArray(data?.waiting) ? data.waiting : [];
+      const remaining = typeof data?.remaining === 'number' ? data.remaining : 0;
+
+      console.log('[loadQueueData] Processed - Active:', activeUsers.length, 'Waiting:', waitingUsers.length, 'Remaining:', remaining);
+
       setQueueData({
-        active: data.active || [],
-        waiting: data.waiting || [],
-        remaining: data.remaining || 0,
+        active: activeUsers,
+        waiting: waitingUsers,
+        remaining: remaining,
       });
 
       const now = Date.now();
@@ -240,14 +265,20 @@ function AdminApp() {
           ...prev,
           {
             t: now,
-            active: (data.active || []).length,
-            waiting: (data.waiting || []).length,
+            active: activeUsers.length,
+            waiting: waitingUsers.length,
           },
         ];
         return next.slice(-30);
       });
     } catch (error) {
-      console.error('Failed to load queue data:', error);
+      console.error('[loadQueueData] Failed to load queue data:', error);
+      // Set empty data on error to prevent stale data
+      setQueueData({
+        active: [],
+        waiting: [],
+        remaining: 0,
+      });
       // Don't show snackbar for queue data errors as they happen frequently during polling
     }
   }, []);
@@ -261,7 +292,9 @@ function AdminApp() {
 
   useEffect(() => {
     if (selectedEvent) {
+      // Load immediately
       loadQueueData(selectedEvent._id);
+      // Then poll every 2 seconds
       const interval = setInterval(() => {
         loadQueueData(selectedEvent._id);
       }, 2000);
@@ -276,6 +309,22 @@ function AdminApp() {
       setHistory([]);
     }
   }, [selectedEvent, loadQueueData]);
+
+  // Also load queue data when dashboard view is selected and we have a selected event
+  useEffect(() => {
+    if (selectedView === 'dashboard' && selectedEvent) {
+      console.log('[Dashboard] Loading queue data for selected event:', selectedEvent._id);
+      loadQueueData(selectedEvent._id);
+    } else if (selectedView === 'dashboard' && !selectedEvent && events.length > 0) {
+      // If dashboard is selected but no event is selected, select the first one
+      console.log('[Dashboard] No selected event, selecting first event');
+      const firstEvent = events[0];
+      setSelectedEvent(firstEvent);
+      if (firstEvent) {
+        loadQueueData(firstEvent._id);
+      }
+    }
+  }, [selectedView, selectedEvent, events, loadQueueData]);
 
   const startQueue = async () => {
     if (!selectedEvent) return;
@@ -325,7 +374,9 @@ function AdminApp() {
     }
   };
 
-  const totalUsers = queueData.active.length + queueData.waiting.length;
+  // Calculate total users - ensure we always have valid numbers
+  const totalUsers = (Array.isArray(queueData.active) ? queueData.active.length : 0) + 
+                      (Array.isArray(queueData.waiting) ? queueData.waiting.length : 0);
   const activeQueues = events.filter((e) => e.isActive).length;
   const totalEvents = events.length;
 
@@ -444,7 +495,7 @@ function AdminApp() {
                     variant="h4"
                     sx={{ fontWeight: 700, color: '#10b981' }}
                   >
-                    {totalUsers}
+                    {totalUsers > 0 ? totalUsers : '0'}
                   </Typography>
                 </Box>
                 <Avatar
@@ -465,8 +516,8 @@ function AdminApp() {
                   }}
                 />
                 <Typography variant="caption" color="text.secondary">
-                  {queueData.active.length} active, {queueData.waiting.length}{' '}
-                  waiting
+                  {queueData.active.length} active, {queueData.waiting.length} waiting
+                  {selectedEvent && ` • ${selectedEvent.name}`}
                 </Typography>
               </Box>
             </CardContent>
@@ -1388,67 +1439,344 @@ function AdminApp() {
     </Box>
   );
 
-  const renderAnalytics = () => (
-    <Box>
-      <Typography
-        variant="h4"
-        sx={{ fontWeight: 700, mb: 4, color: '#1e293b' }}
-      >
-        Analytics
-      </Typography>
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
-                Queue Performance
-              </Typography>
-              {history.length > 0 ? (
-                <LineChart
-                  width={900}
-                  height={400}
-                  series={[
-                    {
-                      data: history.map((h) => h.active),
-                      label: 'Active',
-                      color: '#10b981',
-                      curve: 'monotoneX',
-                    },
-                    {
-                      data: history.map((h) => h.waiting),
-                      label: 'Waiting',
-                      color: '#f59e0b',
-                      curve: 'monotoneX',
-                    },
-                  ]}
-                  xAxis={[
-                    {
-                      scaleType: 'point',
-                      data: history.map((_, i) => i.toString()),
-                    },
-                  ]}
-                  grid={{ vertical: true, horizontal: true }}
-                />
-              ) : (
-                <Box
-                  sx={{
-                    height: 400,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+  const renderAnalytics = () => {
+    // Calculate analytics metrics
+    const totalActive = history.reduce((sum, h) => sum + h.active, 0);
+    const totalWaiting = history.reduce((sum, h) => sum + h.waiting, 0);
+    const avgActive = history.length > 0 ? (totalActive / history.length).toFixed(1) : '0';
+    const avgWaiting = history.length > 0 ? (totalWaiting / history.length).toFixed(1) : '0';
+    const maxActive = history.length > 0 ? Math.max(...history.map(h => h.active)) : 0;
+    const maxWaiting = history.length > 0 ? Math.max(...history.map(h => h.waiting)) : 0;
+    const peakTotal = maxActive + maxWaiting;
+
+    return (
+      <Box>
+        {/* Header */}
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          mb: 3,
+        }}>
+          <Typography variant="h4" sx={{ fontWeight: 600, color: '#1e293b' }}>
+            Analytics
+          </Typography>
+          <IconButton onClick={loadEvents} size="small">
+            <RefreshIcon />
+          </IconButton>
+        </Box>
+
+        {/* Event Selector */}
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <FormControl sx={{ minWidth: 250 }}>
+                <InputLabel>Select Event</InputLabel>
+                <Select
+                  value={selectedEvent?._id || ''}
+                  label="Select Event"
+                  onChange={(e) => {
+                    const event = events.find(ev => ev._id === e.target.value);
+                    if (event) {
+                      setSelectedEvent(event);
+                      // Immediately load queue data for the selected event
+                      loadQueueData(event._id);
+                    }
                   }}
+                  onOpen={loadEvents}
                 >
-                  <Typography color="text.secondary">
-                    No data available
+                  {events.map((event) => (
+                    <MenuItem key={event._id} value={event._id}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                        <EventIcon fontSize="small" />
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {event.name}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {event.domain}
+                          </Typography>
+                        </Box>
+                        <Chip
+                          label={event.isActive ? 'Active' : 'Inactive'}
+                          color={event.isActive ? 'success' : 'default'}
+                          size="small"
+                        />
+                      </Box>
+                    </MenuItem>
+                  ))}
+                  {events.length === 0 && (
+                    <MenuItem disabled>
+                      <Typography variant="body2" color="text.secondary">
+                        No events available
+                      </Typography>
+                    </MenuItem>
+                  )}
+                </Select>
+              </FormControl>
+              
+              {selectedEvent && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+                  <Divider orientation="vertical" flexItem />
+                  <Typography variant="body2" color="text.secondary">
+                    Event: {selectedEvent.name} • Domain: {selectedEvent.domain} • Limit: {selectedEvent.queueLimit} • Interval: {selectedEvent.intervalSec}s
                   </Typography>
+                  <Chip
+                    label={selectedEvent.isActive ? 'Active' : 'Inactive'}
+                    color={selectedEvent.isActive ? 'success' : 'default'}
+                    size="small"
+                  />
                 </Box>
               )}
+            </Box>
+          </CardContent>
+        </Card>
+
+        {!selectedEvent ? (
+          <Card>
+            <CardContent sx={{ textAlign: 'center', py: 6 }}>
+              <EventIcon sx={{ fontSize: 64, color: 'text.secondary', mb: 2, opacity: 0.5 }} />
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                No Event Selected
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Please select an event to view analytics
+              </Typography>
             </CardContent>
           </Card>
-        </Grid>
-      </Grid>
-    </Box>
-  );
+        ) : (
+          <>
+            {/* KPI Cards */}
+            <Grid container spacing={3} sx={{ mb: 3 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Average Active Users
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {avgActive}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Peak: {maxActive}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Average Waiting Users
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {avgWaiting}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Peak: {maxWaiting}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Peak Total Users
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {peakTotal}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Concurrent peak
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Data Points
+                    </Typography>
+                    <Typography variant="h4" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      {history.length}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Last 30 samples
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+
+            {/* Main Chart */}
+            <Card sx={{ mb: 3 }}>
+              <CardContent>
+                <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+                  Queue Performance
+                </Typography>
+                {history.length > 0 ? (
+                  <LineChart
+                    width={900}
+                    height={400}
+                    series={[
+                      {
+                        data: history.map((h) => h.active),
+                        label: 'Active',
+                        color: '#10b981',
+                        curve: 'monotoneX',
+                      },
+                      {
+                        data: history.map((h) => h.waiting),
+                        label: 'Waiting',
+                        color: '#f59e0b',
+                        curve: 'monotoneX',
+                      },
+                    ]}
+                    xAxis={[
+                      {
+                        scaleType: 'point',
+                        data: history.map((_, i) => i.toString()),
+                      },
+                    ]}
+                    grid={{ vertical: true, horizontal: true }}
+                  />
+                ) : (
+                  <Box
+                    sx={{
+                      height: 400,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Typography color="text.secondary">
+                      No data available
+                    </Typography>
+                  </Box>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Event Details and Current Status */}
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                      Event Information
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    {selectedEvent && (
+                      <Stack spacing={2}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Event Name
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {selectedEvent.name}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Domain
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {selectedEvent.domain}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Queue Limit
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {selectedEvent.queueLimit} users/batch
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Interval
+                          </Typography>
+                          <Typography variant="body2" sx={{ fontWeight: 500 }}>
+                            {selectedEvent.intervalSec}s
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                          <Typography variant="body2" color="text.secondary">
+                            Status
+                          </Typography>
+                          <Chip
+                            label={selectedEvent.isActive ? 'Active' : 'Inactive'}
+                            color={selectedEvent.isActive ? 'success' : 'default'}
+                            size="small"
+                          />
+                        </Box>
+                      </Stack>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                      Current Queue Status
+                    </Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    <Stack spacing={2}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Active Users
+                        </Typography>
+                        <Chip
+                          label={queueData.active.length}
+                          color="success"
+                          size="small"
+                          sx={{ fontWeight: 600, minWidth: 50, justifyContent: 'center' }}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Waiting Users
+                        </Typography>
+                        <Chip
+                          label={queueData.waiting.length}
+                          color="warning"
+                          size="small"
+                          sx={{ fontWeight: 600, minWidth: 50, justifyContent: 'center' }}
+                        />
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Total Users
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                          {queueData.active.length + queueData.waiting.length}
+                        </Typography>
+                      </Box>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          Remaining Time
+                        </Typography>
+                        <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                          {queueData.remaining}s
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          </>
+        )}
+      </Box>
+    );
+  };
 
   return (
     <Box sx={{ display: 'flex' }}>

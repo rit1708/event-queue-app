@@ -37,6 +37,7 @@ export interface QueueJoinModalProps {
   cancelButtonText?: string;
   closeButtonText?: string;
   redirectUrl?: string;
+  accessToken?: string; // Optional token to override SDK token
 }
 
 export function QueueJoinModal({
@@ -45,6 +46,7 @@ export function QueueJoinModal({
   queueId,
   userId,
   event,
+  accessToken,
   open: controlledOpen,
   onClose: controlledOnClose,
   onActive,
@@ -68,6 +70,7 @@ export function QueueJoinModal({
     onActive,
     onRedirect,
     redirectUrl,
+    accessToken,
   });
 
   const {
@@ -248,7 +251,7 @@ export function QueueJoinModal({
             {/* Timer - Always show when queueStatus exists */}
             {queueStatus && (
               <Box sx={{ mb: 3, p: 2, bgcolor: 'primary.light', borderRadius: 2 }}>
-                {/* 45-second Waiting Timer */}
+                {/* Waiting Timer - Shows when entry limit is exceeded */}
                 {isWaiting &&
                   queueStatus.showWaitingTimer &&
                   waitDialog.open &&

@@ -147,17 +147,31 @@ export async function validateToken(token: string): Promise<boolean> {
   const db = await getDb();
   const now = new Date();
 
+  // Trim token to handle any whitespace issues
+  const trimmedToken = token.trim();
+  
+  console.log('[validateToken] Looking for token:', trimmedToken.substring(0, 10) + '...');
+  
   const tokenDoc = await db.collection<TokenDocument>('tokens').findOne({
-    token,
+    token: trimmedToken,
     isActive: true,
   });
 
   if (!tokenDoc) {
+    console.log('[validateToken] Token not found or not active in database');
+    // Also check if token exists but is inactive
+    const inactiveToken = await db.collection<TokenDocument>('tokens').findOne({
+      token: trimmedToken,
+    });
+    if (inactiveToken) {
+      console.log('[validateToken] Token exists but isActive:', inactiveToken.isActive);
+    }
     return false;
   }
 
   // Check if token is expired
   if (tokenDoc.expiresAt && new Date(tokenDoc.expiresAt) < now) {
+    console.log('[validateToken] Token expired:', tokenDoc.expiresAt);
     // Mark as inactive
     await db
       .collection<TokenDocument>('tokens')
@@ -165,6 +179,7 @@ export async function validateToken(token: string): Promise<boolean> {
     return false;
   }
 
+  console.log('[validateToken] Token is valid');
   // Update last used timestamp
   await db
     .collection<TokenDocument>('tokens')
