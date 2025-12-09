@@ -32,6 +32,7 @@ export const joinQueueSchema = z.object({
     eventId: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid event ID format'),
     userId: z.string().min(1, 'User ID is required').max(200),
     domain: z.string().min(1, 'Domain is required').optional(),
+    token: z.string().min(1, 'Token is required').optional(), // Token in payload
   }),
 });
 

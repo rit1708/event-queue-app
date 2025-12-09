@@ -15,23 +15,32 @@ export const tokenAuth = async (
     const authHeader = req.headers.authorization;
     
     if (!authHeader) {
+      console.log('[tokenAuth] No Authorization header found');
       throw new AppError('Authorization token required', 401, 'UNAUTHORIZED');
     }
 
     // Extract token from "Bearer <token>" or just "<token>"
-    const token = authHeader.startsWith('Bearer ')
+    let token = authHeader.startsWith('Bearer ')
       ? authHeader.substring(7)
       : authHeader;
 
+    // Trim whitespace to prevent issues
+    token = token.trim();
+
     if (!token) {
+      console.log('[tokenAuth] Token is empty after extraction');
       throw new AppError('Invalid authorization header format', 401, 'UNAUTHORIZED');
     }
 
+    console.log('[tokenAuth] Validating token:', token.substring(0, 10) + '...');
     const isValid = await validateToken(token);
     
     if (!isValid) {
+      console.log('[tokenAuth] Token validation failed for:', token.substring(0, 10) + '...');
       throw new AppError('Invalid or expired token', 401, 'UNAUTHORIZED');
     }
+    
+    console.log('[tokenAuth] Token validated successfully');
 
     // Store token in request for potential future use
     (req as any).token = token;

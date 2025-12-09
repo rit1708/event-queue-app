@@ -83,7 +83,12 @@ export function getBaseUrl(): string {
 }
 
 export function setToken(token: string | undefined): void {
-  config.token = token;
+  if (token) {
+    // Trim whitespace to prevent issues
+    config.token = token.trim();
+  } else {
+    delete config.token;
+  }
 }
 
 export function getToken(): string | undefined {

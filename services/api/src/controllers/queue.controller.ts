@@ -92,7 +92,10 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
 
   const entryWindowActive = ttl > 0; // Entry timer is running
   const hasAvailableSlots = activeLen < event.queueLimit; // Not at capacity
-  const canEnterDirectly = !entryWindowActive || hasAvailableSlots; // Can enter if timer expired OR slots available
+  // Can enter directly if:
+  // 1. Timer expired AND no users waiting (timer completed/restarted, queue is open)
+  // 2. Timer active AND slots available
+  const canEnterDirectly = (!entryWindowActive && waitingLen === 0) || hasAvailableSlots;
 
   // If user is not in queue and can enter directly
   if (!userInQueue && canEnterDirectly) {
@@ -108,26 +111,49 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
       redis.llen(k.waiting),
     ]);
 
-    // If this fills the queue, start/refresh entry timer
+    // If timer expired and user entered directly (timer completed/restarted scenario),
+    // start a new entry window timer
+    const wasTimerExpired = !entryWindowActive && waitingLen === 0;
     const newActiveLen = finalActiveLen;
-    if (newActiveLen >= event.queueLimit) {
+    
+    // Start/refresh timer if:
+    // 1. Queue is now full, OR
+    // 2. Timer was expired and user entered (restart entry window)
+    if (newActiveLen >= event.queueLimit || wasTimerExpired) {
       await redis.set(k.timer, '1', 'EX', event.intervalSec);
-      // User entered when queue was available, but now it's full
-      // They need to wait for the interval timer to complete
       const updatedTtl = await redis.ttl(k.timer);
-      res.json({
-        success: true,
-        status: 'active',
-        state: 'active',
-        position: updatedStatus.position ?? 0,
-        total: updatedStatus.total ?? finalActiveLen + finalWaitingLen,
-        timeRemaining: Math.max(0, updatedTtl), // Show interval timer
-        activeUsers: finalActiveLen,
-        waitingUsers: finalWaitingLen,
-        showWaitingTimer: false,
-      });
+      
+      if (newActiveLen >= event.queueLimit) {
+        // User entered when queue was available, but now it's full
+        // They need to wait for the interval timer to complete
+        res.json({
+          success: true,
+          status: 'active',
+          state: 'active',
+          position: updatedStatus.position ?? 0,
+          total: updatedStatus.total ?? finalActiveLen + finalWaitingLen,
+          timeRemaining: Math.max(0, updatedTtl), // Show interval timer
+          activeUsers: finalActiveLen,
+          waitingUsers: finalWaitingLen,
+          showWaitingTimer: false,
+        });
+      } else {
+        // Timer restarted, queue not full yet - user can enter directly
+        // Set timeRemaining to 0 so redirect happens immediately
+        res.json({
+          success: true,
+          status: 'active',
+          state: 'active',
+          position: updatedStatus.position ?? 0,
+          total: updatedStatus.total ?? finalActiveLen + finalWaitingLen,
+          timeRemaining: 0, // No timer - redirect immediately
+          activeUsers: finalActiveLen,
+          waitingUsers: finalWaitingLen,
+          showWaitingTimer: false,
+        });
+      }
     } else {
-      // Queue still has slots - user can enter immediately, no timer needed
+      // Queue still has slots and timer is active - user can enter immediately
       // Set timeRemaining to 0 so redirect happens immediately
       res.json({
         success: true,
@@ -175,8 +201,8 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
       timeRemaining: Math.max(0, finalTtl),
       activeUsers: finalActiveLen,
       waitingUsers: finalWaitingLen,
-      showWaitingTimer: true, // Show 45-second waiting timer
-      waitingTimerDuration: 45, // 45 seconds
+      showWaitingTimer: true, // Show waiting timer (interval timer)
+      waitingTimerDuration: event.intervalSec, // Use event's intervalSec
     });
     return;
   }
@@ -215,7 +241,7 @@ export const joinQueue = async (req: Request, res: Response): Promise<void> => {
       activeUsers: finalActiveLen3,
       waitingUsers: finalWaitingLen3,
       showWaitingTimer: shouldShowTimer,
-      waitingTimerDuration: shouldShowTimer ? 45 : 0,
+      waitingTimerDuration: shouldShowTimer ? event.intervalSec : 0,
     });
     return;
   }
@@ -307,7 +333,7 @@ export const getQueueStatus = async (
     activeUsers: finalActiveUsers,
     waitingUsers: finalWaitingUsers,
     showWaitingTimer: shouldShowTimer,
-    waitingTimerDuration: shouldShowTimer ? 45 : 0,
+    waitingTimerDuration: shouldShowTimer ? event.intervalSec : 0,
   });
 };
 
@@ -331,7 +357,11 @@ export const getQueueUsers = async (
 
   if (!isConnected) {
     // Return empty queue data instead of error
-    const emptyQueue: QueueUsers = { active: [], waiting: [], remaining: 0 };
+    const emptyQueue: QueueUsers = {
+      active: [],
+      waiting: [],
+      remaining: 0,
+    };
     res.json(emptyQueue);
     return;
   }
@@ -349,10 +379,14 @@ export const getQueueUsers = async (
     redis.ttl(kTimer),
   ]);
 
+  // Ensure we return arrays even if Redis returns null/undefined
+  const activeUsers = Array.isArray(active) ? active : [];
+  const waitingUsers = Array.isArray(waiting) ? waiting : [];
+
   res.json({
-    active,
-    waiting,
-    remaining: Math.max(0, ttl),
+    active: activeUsers,
+    waiting: waitingUsers,
+    remaining: Math.max(0, ttl || 0),
   });
 };
 

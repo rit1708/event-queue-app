@@ -25,41 +25,28 @@ function App() {
   const [hasToken, setHasToken] = useState<boolean | null>(null);
   const [tokenError, setTokenError] = useState<string | null>(null);
 
-  // Initialize SDK with token from various sources (optional for viewing events, required for queue operations)
+  // Initialize SDK with token using sdk.init()
   useEffect(() => {
     const initializeToken = () => {
-      // Priority: 1. SDK config, 2. localStorage, 3. environment variable, 4. window global, 5. default token
-      let token = sdk.getToken();
+      // Initialize SDK with the token
+      const token = '49685bda848d83a35d4570e1975cac8ad71833aeb2f750d83dfb31c561bcf6a4';
       
-      if (!token) {
-        token = sdk.loadTokenFromStorage();
-      }
+      // Use sdk.init() to set the token
+      sdk.init({ token });
       
-      if (!token && typeof window !== 'undefined') {
-        // Check for token in window global (for programmatic injection)
-        token = (window as any).__QUEUE_API_TOKEN__;
-      }
-      
-      if (!token && typeof import.meta !== 'undefined') {
-        // Check for token in Vite env
-        const metaEnv = (import.meta as any)?.env;
-        token = metaEnv?.VITE_API_TOKEN;
-      }
-
-      // Default token (can be removed in production)
-      if (!token) {
-        token = 'a8acdb075eed9471fb856bad099e75f8ec8671a898a994a0f4cb30a052e63abc';
-      }
-
-      if (token) {
-        sdk.setToken(token);
-        // Optionally save to localStorage for persistence
-        if (typeof window !== 'undefined') {
-          try {
-            sdk.saveTokenToStorage(token);
-          } catch {
-            // Ignore localStorage errors
+      // Also save to localStorage for persistence
+      if (typeof window !== 'undefined') {
+        try {
+          sdk.saveTokenToStorage(token);
+          // Verify token is set
+          const verifyToken = sdk.getToken();
+          if (!verifyToken) {
+            console.error('[App] WARNING: Token was set but getToken() returns undefined!');
+          } else {
+            console.log('[App] SDK initialized with token, length:', verifyToken.length);
           }
+        } catch (e) {
+          console.error('[App] Error saving token to storage:', e);
         }
       }
 

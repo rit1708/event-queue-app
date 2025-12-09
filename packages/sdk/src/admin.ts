@@ -74,9 +74,16 @@ export async function getQueueUsers(eventId: string): Promise<QueueUsers> {
   if (!eventId || typeof eventId !== 'string') {
     throw new ValidationError('Event ID is required and must be a string');
   }
-  return get<QueueUsers>(
+  const response = await get<QueueUsers>(
     `/admin/event/users?eventId=${encodeURIComponent(eventId)}`
   );
+  
+  // Ensure response has the correct structure
+  return {
+    active: Array.isArray(response?.active) ? response.active : [],
+    waiting: Array.isArray(response?.waiting) ? response.waiting : [],
+    remaining: typeof response?.remaining === 'number' ? response.remaining : 0,
+  };
 }
 
 export async function updateQueueStatus(
