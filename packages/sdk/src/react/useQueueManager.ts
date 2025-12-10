@@ -545,18 +545,70 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
 
     const interval = setInterval(() => {
       setWaitDialog((prev) => {
-        if (!prev.open || prev.remaining <= 0) {
+        if (!prev.open) {
           return prev;
         }
+        
+        const newRemaining = Math.max(prev.remaining - 1, 0);
+        
+        // When interval timer completes (remaining reaches 0), trigger redirect immediately
+        if (newRemaining === 0 && prev.duration > 0) {
+          console.log('[Interval Timer] ⚡⚡⚡ INTERVAL TIMER COMPLETED! Redirecting to domain URL...', {
+            duration: prev.duration,
+            eventDomain: event?.domain,
+          });
+          
+          // Trigger redirect in next tick to avoid state update conflicts
+          setTimeout(() => {
+            if (hasRedirected) {
+              return; // Already redirected
+            }
+            
+            if (!(event || redirectUrl)) {
+              console.error('[Interval Timer] No redirect target available');
+              return;
+            }
+            
+            setHasRedirected(true);
+            
+            // Stop polling
+            if (pollingCleanupRef.current) {
+              pollingCleanupRef.current();
+              pollingCleanupRef.current = null;
+            }
+            
+            const targetUrl = resolveRedirectTarget();
+            console.log('[Interval Timer] Resolved domain URL:', targetUrl);
+            
+            if (targetUrl && targetUrl !== '#') {
+              console.log('[Interval Timer] >>> REDIRECTING TO DOMAIN URL:', targetUrl);
+              try {
+                if (onRedirect) {
+                  onRedirect(targetUrl);
+                } else {
+                  window.location.href = targetUrl;
+                }
+                console.log('[Interval Timer] ✓✓✓ REDIRECTED SUCCESSFULLY');
+              } catch (error) {
+                console.error('[Interval Timer] ✗ Redirect error:', error);
+                setHasRedirected(false);
+              }
+            } else {
+              console.error('[Interval Timer] ✗ Invalid domain URL:', targetUrl);
+              setHasRedirected(false);
+            }
+          }, 100);
+        }
+        
         return {
           ...prev,
-          remaining: Math.max(prev.remaining - 1, 0),
+          remaining: newRemaining,
         };
       });
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [waitDialog.open, waitDialog.remaining, waitDialog.duration]);
+  }, [waitDialog.open, waitDialog.remaining, waitDialog.duration, hasRedirected, event, redirectUrl, resolveRedirectTarget, onRedirect]);
 
   // Sync local countdown with API value
   useEffect(() => {
@@ -727,34 +779,62 @@ export function useQueueManager(options: UseQueueManagerOptions = {}) {
     [joinQueue, closeModal, openModal, reset]
   );
 
-  // Redirect when waiting timer completes
+  // Backup redirect effect: Redirect when interval timer completes
+  // This is a backup in case the countdown interval doesn't trigger
   useEffect(() => {
-    if (
-      !waitDialog.open ||
-      waitDialog.remaining > 0 ||
-      waitDialog.duration === 0
-    ) {
+    // Check if interval timer completed
+    const timerCompleted = waitDialog.duration > 0 && waitDialog.remaining === 0;
+    
+    if (!timerCompleted || hasRedirected) {
       return;
     }
-    // When waiting timer completes, redirect user to the expected route
-    if (hasRedirected) {
+    
+    if (!(event || redirectUrl)) {
       return;
     }
-
+    
+    console.log('[Redirect Effect] Interval timer completed, redirecting to domain URL...', {
+      duration: waitDialog.duration,
+      remaining: waitDialog.remaining,
+      eventDomain: event?.domain,
+    });
+    
     setHasRedirected(true);
+    
+    // Stop polling
+    if (pollingCleanupRef.current) {
+      pollingCleanupRef.current();
+      pollingCleanupRef.current = null;
+    }
+    
     const targetUrl = resolveRedirectTarget();
+    console.log('[Redirect Effect] Domain URL:', targetUrl);
+    
     if (targetUrl && targetUrl !== '#') {
-      if (onRedirect) {
-        onRedirect(targetUrl);
-      } else {
-        window.location.href = targetUrl;
-      }
+      setTimeout(() => {
+        console.log('[Redirect Effect] >>> REDIRECTING TO:', targetUrl);
+        try {
+          if (onRedirect) {
+            onRedirect(targetUrl);
+          } else {
+            window.location.href = targetUrl;
+          }
+          console.log('[Redirect Effect] ✓✓✓ REDIRECTED');
+        } catch (error) {
+          console.error('[Redirect Effect] ✗ Error:', error);
+          setHasRedirected(false);
+        }
+      }, 200);
+    } else {
+      console.error('[Redirect Effect] ✗ Invalid domain URL');
+      setHasRedirected(false);
     }
   }, [
-    waitDialog.open,
     waitDialog.remaining,
     waitDialog.duration,
     hasRedirected,
+    event,
+    redirectUrl,
     resolveRedirectTarget,
     onRedirect,
   ]);
