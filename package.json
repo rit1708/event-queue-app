@@ -16,9 +16,9 @@
     "format": "npm --workspaces run format"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^9.2.1"
   },
   "dependencies": {
-    "@mui/icons-material": "^5.18.0"
+    "@mui/icons-material": "^7.3.6"
   }
 }

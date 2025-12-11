@@ -17,6 +17,10 @@ import {
   Fade,
   alpha,
 } from '@mui/material';
+import type { GridProps } from '@mui/material';
+
+// Type-safe Grid item wrapper for React 19 compatibility
+const GridItem = (props: GridProps & { item?: boolean; xs?: number; sm?: number; md?: number; key?: string }) => <Grid {...(props as any)} />;
 import {
   Event as EventIcon,
   Timer as TimerIcon,
@@ -43,9 +47,10 @@ export interface EventsListProps {
 }
 
 function TabPanel({ children, value, index }: { children: React.ReactNode; value: number; index: number }): JSX.Element {
+  const content = value === index ? <Box sx={{ py: 3 }}>{children as any}</Box> : null;
   return (
     <div role="tabpanel" hidden={value !== index} id={`tabpanel-${index}`} aria-labelledby={`tab-${index}`}>
-      {value === index && <Box sx={{ py: 3 }}>{children}</Box>}
+      {content}
     </div>
   );
 }
@@ -71,7 +76,7 @@ function EventCard({
   };
 
   return (
-    <Grid item xs={12} sm={6} md={4} key={event._id}>
+    <GridItem item xs={12} sm={6} md={4} key={event._id}>
       <Fade in timeout={300 + index * 100}>
         <Card
           sx={{
@@ -205,7 +210,7 @@ function EventCard({
           </CardActionArea>
         </Card>
       </Fade>
-    </Grid>
+    </GridItem>
   );
 }
 
@@ -337,11 +342,11 @@ export function EventsList({
                 />
               ))}
               {events.length === 0 && (
-                <Grid item xs={12}>
+                <GridItem item xs={12}>
                   <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
                     {emptyMessage}
                   </Typography>
-                </Grid>
+                </GridItem>
               )}
             </Grid>
           </TabPanel>
@@ -358,11 +363,11 @@ export function EventsList({
                 />
               ))}
               {activeEvents.length === 0 && (
-                <Grid item xs={12}>
+                <GridItem item xs={12}>
                   <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
                     {emptyActiveMessage}
                   </Typography>
-                </Grid>
+                </GridItem>
               )}
             </Grid>
           </TabPanel>
@@ -379,11 +384,11 @@ export function EventsList({
                 />
               ))}
               {inactiveEvents.length === 0 && (
-                <Grid item xs={12}>
+                <GridItem item xs={12}>
                   <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
                     {emptyInactiveMessage}
                   </Typography>
-                </Grid>
+                </GridItem>
               )}
             </Grid>
           </TabPanel>
@@ -400,11 +405,11 @@ export function EventsList({
             />
           ))}
           {events.length === 0 && (
-            <Grid item xs={12}>
+            <GridItem item xs={12}>
               <Typography variant="body1" color="text.secondary" textAlign="center" sx={{ py: 4 }}>
                 {emptyMessage}
               </Typography>
-            </Grid>
+            </GridItem>
           )}
         </Grid>
       )}

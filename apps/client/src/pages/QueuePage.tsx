@@ -164,7 +164,7 @@ export const QueuePage = ({ event, userId, onBack }: QueuePageProps) => {
         }}
         accessToken={token}
         cancelButtonText="Leave Queue"
-        onRedirect={(url) => {
+        onRedirect={(url: string) => {
           window.location.href = url;
         }}
       />

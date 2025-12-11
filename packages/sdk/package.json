@@ -2,14 +2,21 @@
   "name": "queue-sdk",
   "version": "0.1.0",
   "description": "Queue Management SDK - Use across multiple projects with auto-detection of API endpoints",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.js",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "default": "./dist/index.js"
+    },
+    "./react": {
+      "types": "./dist/react/index.d.ts",
+      "import": "./dist/react/index.js",
+      "default": "./dist/react/index.js"
     }
   },
   "files": [
@@ -27,19 +34,19 @@
     "format": "prettier -w ."
   },
   "peerDependencies": {
-    "react": "^18.0.0",
-    "react-dom": "^18.0.0",
-    "@mui/material": "^5.0.0",
-    "@mui/icons-material": "^5.0.0"
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0",
+    "@mui/material": "^5.0.0 || ^7.0.0",
+    "@mui/icons-material": "^5.0.0 || ^7.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.4.2",
-    "@types/node": "^20.11.30",
-    "@types/react": "^18.0.0",
-    "@types/react-dom": "^18.0.0",
-    "eslint": "^8.56.0",
-    "@typescript-eslint/parser": "^7.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "prettier": "^3.2.5"
+    "typescript": "^5.9.3",
+    "@types/node": "^24.10.2",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "eslint": "^9.39.1",
+    "@typescript-eslint/parser": "^8.49.0",
+    "@typescript-eslint/eslint-plugin": "^8.49.0",
+    "prettier": "^3.7.4"
   }
 }

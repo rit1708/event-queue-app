@@ -12,6 +12,10 @@ import {
   Stack,
   Fade,
 } from '@mui/material';
+import type { GridProps } from '@mui/material';
+
+// Type-safe Grid item wrapper for React 19 compatibility
+const GridItem = (props: GridProps & { item?: boolean; xs?: number; sm?: number; md?: number; key?: string }) => <Grid {...(props as any)} />;
 import {
   Event as EventIcon,
   Timer as TimerIcon,
@@ -40,7 +44,7 @@ export const EventCard = memo(function EventCard({ event, index, onClick, onJoin
   };
 
   return (
-    <Grid item xs={12} sm={6} md={4} key={event._id}>
+    <GridItem item xs={12} sm={6} md={4} key={event._id}>
       <Fade in timeout={300 + index * 100}>
         <StyledEventCard>
           <CardActionArea onClick={() => onClick(event)} sx={{ p: 0 }}>
@@ -125,7 +129,7 @@ export const EventCard = memo(function EventCard({ event, index, onClick, onJoin
           </CardActionArea>
         </StyledEventCard>
       </Fade>
-    </Grid>
+    </GridItem>
   );
 });
 

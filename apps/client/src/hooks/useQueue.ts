@@ -61,7 +61,7 @@ export const useQueue = ({ eventId, userId, enabled = true, pollInterval = 2000 
       pollingCleanupRef.current();
     }
 
-    const cleanup = sdk.pollStatus(eventId, userId, (status) => {
+    const cleanup = sdk.pollStatus(eventId, userId, (status: QueueStatus) => {
       setQueueStatus(status);
       setError(null);
     }, { intervalMs: pollInterval });
